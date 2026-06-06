@@ -245,7 +245,7 @@ const commands = [
   },
   {
     name: "settle",
-    description: "Settle this channel's job and post the payout (officers only)",
+    description: "Settle this channel's job and post the payout (opener or officer)",
     type: 1,
   },
 ];

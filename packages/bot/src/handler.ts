@@ -619,7 +619,9 @@ async function handleSettle(i: any) {
   if (isErr(job)) return reply(job.error);
   const gid = guildId(i);
   const config = await store.getConfig(gid);
-  if (!isOfficer(i, config)) return reply("⛔ Only officers can settle a job.");
+  if (job.createdBy !== actorId(i) && !isOfficer(i, config)) {
+    return reply("⛔ Only whoever opened this job (or an officer) can settle it.");
+  }
 
   const [entries, catalog, recipes, lines, ranks] = await Promise.all([
     store.listEntries(job.id),

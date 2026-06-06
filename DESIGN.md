@@ -92,6 +92,7 @@ scoped to the channel's product line.
 | `/job open name: product:<line>` | open a job — **auto-creates its channel** under Operations |
 | `/job list` | list open jobs (with channel links) |
 | `/job close` | close + archive the channel — **the opener or an officer** |
+| `/settle` | run the engine, post the payout, archive the channel — **the opener or an officer** |
 | `/status` | current state — pool inventory, totals, and **unaccounted** product (made but unsold/unwithdrawn) |
 | `/ledger` | full chronological history — every deposit/process/sale/withdraw, with who & when |
 | `/deposit item:<auto> qty:` · `/deposit cash:` | add materials / cash to the pool (valued at catalog) |
@@ -104,7 +105,6 @@ scoped to the channel's product line.
 | Command | Does |
 |---|---|
 | `/setup` | **first-run wizard** — seed starting values + map Discord roles → levels + set the officer role (§4.1). Gated on Discord *Manage Server*, since no officer role exists yet |
-| `/settle` | run the engine on this channel's job, post the payout table, archive the channel |
 | `/void entry:` | reverse a mistaken entry — appends a logged reversal (never hard-deletes) |
 | `/job reopen` | reopen a settled job for corrections (audit-logged) |
 | `/config` · `/config set <dial> <value>` | open the stepper **panel** (§4.1), or set a dial directly |
@@ -255,8 +255,8 @@ Tony $12,518 · Lou $10,855, summing to $220,000.
 ## 7. Permissions & config
 
 - **Officer gating**: a configured **officer role** (e.g. Capo+), checked against `interaction.member.roles`
-  (falls back to Discord *Manage Server* before one is set). Officer-only: settle, void, job-reopen, catalog,
-  recipe, config, rank. **`/job open` is open to all; `/job close` = the opener or an officer.** The role id lives in `CONFIG`.
+  (falls back to Discord *Manage Server* before one is set). Officer-only: void, job-reopen, catalog,
+  recipe, config, rank. **`/job open` is open to all; `/job close` and `/settle` = the opener or an officer.** The role id lives in `CONFIG`.
 - All economy values live in `CONFIG`/`ITEM`/`RECIPE` items — **nothing hardcoded**; the engine reads them at runtime.
 - **Guild-scoped** from day one (every key carries `<gid>`), so multi-crew is possible later at no refactor cost,
   even though we target the one crew now.
