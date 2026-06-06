@@ -362,6 +362,15 @@ async function handleJob(i: any) {
     const lineId = option<string>(i, "product")!;
     const line = (await store.listLines(gid)).find((l) => l.id === lineId);
     if (!line) return reply("⚠️ Pick a product line from the list.");
+    const existingId = await store.getChannelJobId(gid, channelId(i));
+    if (existingId) {
+      const existing = await store.getJob(existingId);
+      if (existing && existing.status === "open") {
+        return reply(
+          `⚠️ This channel already has an open job: **${existing.name}**. Close it with \`/job close\`, or open this one in a **different channel** — one open job per channel keeps targeting unambiguous (run concurrent ops in separate channels).`
+        );
+      }
+    }
     await store.createJob(gid, {
       id: i.id,
       name,
