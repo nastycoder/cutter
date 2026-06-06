@@ -179,16 +179,8 @@ async function handleAutocomplete(i: any) {
         .map((l) => ({ name: l.name, value: l.id }))
     );
   }
-  if (f.name === "job") {
-    const jobs = await store.listOpenJobs(gid);
-    return autocompleteResult(
-      jobs
-        .filter((j) => j.name.toLowerCase().includes(q))
-        .map((j) => ({ name: `${j.name} (${j.lineId})`, value: j.id }))
-    );
-  }
   if (f.name === "step") {
-    const jobId = option<string>(i, "job") ?? (await store.getChannelJobId(gid, channelId(i)));
+    const jobId = await store.getChannelJobId(gid, channelId(i));
     const job = jobId ? await store.getJob(jobId) : undefined;
     const recipes = await store.listRecipes(gid);
     return autocompleteResult(
@@ -326,11 +318,12 @@ function isErr(x: any): x is { error: string } {
 }
 
 async function resolveJob(i: any): Promise<store.JobMeta | { error: string }> {
-  const gid = guildId(i);
-  const jobId = option<string>(i, "job") ?? (await store.getChannelJobId(gid, channelId(i)));
-  if (!jobId) return { error: "❓ No open job here — open one with `/job open`, or pass `job:`." };
+  const jobId = await store.getChannelJobId(guildId(i), channelId(i));
+  if (!jobId) {
+    return { error: "❓ Run this in a job's channel — open one with `/job open`." };
+  }
   const job = await store.getJob(jobId);
-  if (!job || job.status === "closed") return { error: "❓ That job isn't open." };
+  if (!job || job.status === "closed") return { error: "❓ This channel has no open job." };
   return job;
 }
 

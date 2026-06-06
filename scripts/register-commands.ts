@@ -194,8 +194,7 @@ const commands = [
       {
         type: 1,
         name: "close",
-        description: "Close a job without settling (officers only)",
-        options: [{ type: 3, name: "job", description: "Job (default: this channel's)", required: false, autocomplete: true }],
+        description: "Close this channel's job without settling (officers only)",
       },
     ],
   },
@@ -206,9 +205,7 @@ const commands = [
     options: [
       { type: 3, name: "item", description: "Item", required: false, autocomplete: true },
       { type: 10, name: "qty", description: "Quantity (with item)", required: false },
-      { type: 10, name: "cash", description: "Cash amount", required: false },
-      { type: 3, name: "job", description: "Job (default: this channel's)", required: false, autocomplete: true },
-    ],
+      { type: 10, name: "cash", description: "Cash amount", required: false },    ],
   },
   {
     name: "process",
@@ -216,9 +213,7 @@ const commands = [
     type: 1,
     options: [
       { type: 3, name: "step", description: "Recipe step", required: true, autocomplete: true },
-      { type: 10, name: "made", description: "Units produced", required: true },
-      { type: 3, name: "job", description: "Job (default: this channel's)", required: false, autocomplete: true },
-    ],
+      { type: 10, name: "made", description: "Units produced", required: true },    ],
   },
   {
     name: "withdraw",
@@ -227,9 +222,7 @@ const commands = [
     options: [
       { type: 3, name: "item", description: "Item", required: false, autocomplete: true },
       { type: 10, name: "qty", description: "Quantity (with item)", required: false },
-      { type: 10, name: "cash", description: "Cash amount", required: false },
-      { type: 3, name: "job", description: "Job (default: this channel's)", required: false, autocomplete: true },
-    ],
+      { type: 10, name: "cash", description: "Cash amount", required: false },    ],
   },
   {
     name: "sale",
@@ -238,15 +231,12 @@ const commands = [
     options: [
       { type: 10, name: "qty", description: "Units sold", required: true },
       { type: 10, name: "cash", description: "Cash received", required: true },
-      { type: 6, name: "by", description: "Seller (default: you)", required: false },
-      { type: 3, name: "job", description: "Job (default: this channel's)", required: false, autocomplete: true },
-    ],
+      { type: 6, name: "by", description: "Seller (default: you)", required: false },    ],
   },
   {
     name: "ledger",
-    description: "Show a job's full history",
+    description: "Show this channel's job history",
     type: 1,
-    options: [{ type: 3, name: "job", description: "Job (default: this channel's)", required: false, autocomplete: true }],
   },
 ];
 
