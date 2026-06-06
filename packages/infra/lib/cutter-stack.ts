@@ -51,7 +51,7 @@ export class CutterStack extends Stack {
       handler: "handler",
       runtime: Runtime.NODEJS_20_X,
       memorySize: 256,
-      timeout: Duration.seconds(10),
+      timeout: Duration.seconds(30),
       logGroup,
       environment: {
         TABLE_NAME: table.tableName,
@@ -61,6 +61,7 @@ export class CutterStack extends Stack {
     });
     table.grantReadWriteData(fn);
     secret.grantRead(fn);
+    fn.grantInvoke(fn); // self-invoke for deferred (async) command handling
 
     // ---- HTTP API: POST /interactions ----
     const api = new apigw.HttpApi(this, "Api", { apiName: "cutter" });

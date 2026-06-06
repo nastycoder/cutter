@@ -9,6 +9,45 @@ import * as rest from "./rest";
 import { getSecret } from "./secret";
 import { buildCosts, itemValues, inventory, settle } from "@cutter/engine";
 import type { Config } from "@cutter/shared";
+import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda";
+
+const lambdaClient = new LambdaClient({});
+
+// Commands whose work exceeds Discord's 3s window are deferred: we ACK immediately,
+// then this Lambda invokes itself asynchronously to do the work and edit the reply.
+function isDeferrable(i: any): boolean {
+  const n = commandName(i);
+  return n === "settle" || (n === "job" && subcommand(i) === "open");
+}
+
+async function invokeSelf(payload: unknown): Promise<void> {
+  await lambdaClient.send(
+    new InvokeCommand({
+      FunctionName: process.env.AWS_LAMBDA_FUNCTION_NAME!,
+      InvocationType: "Event",
+      Payload: Buffer.from(JSON.stringify(payload)),
+    })
+  );
+}
+
+async function runFollowup(i: any): Promise<void> {
+  try {
+    const content =
+      commandName(i) === "settle"
+        ? await settleWork(i)
+        : commandName(i) === "job" && subcommand(i) === "open"
+          ? await jobOpenWork(i)
+          : "Unknown deferred command.";
+    await rest.editOriginal(i.application_id, i.token, content);
+  } catch (e) {
+    console.error("followup error", e);
+    try {
+      await rest.editOriginal(i.application_id, i.token, "⚠️ Something went wrong.");
+    } catch {
+      /* give up */
+    }
+  }
+}
 import {
   json,
   reply,
@@ -31,7 +70,13 @@ interface ProxyEvent {
   isBase64Encoded?: boolean;
 }
 
-export async function handler(event: ProxyEvent) {
+export async function handler(event: any) {
+  // Async self-invocation: do the deferred work, then edit the original reply.
+  if (event?.source === "followup") {
+    await runFollowup(event.interaction);
+    return;
+  }
+
   const sig = event.headers?.["x-signature-ed25519"];
   const ts = event.headers?.["x-signature-timestamp"];
   const rawBody = event.isBase64Encoded
@@ -53,6 +98,18 @@ export async function handler(event: ProxyEvent) {
   }
 
   if (interaction.type === InteractionType.ApplicationCommand) {
+    if (isDeferrable(interaction)) {
+      try {
+        await invokeSelf({ source: "followup", interaction });
+        const ephemeral = commandName(interaction) === "settle";
+        return json({
+          type: InteractionResponseType.DeferredChannelMessageWithSource,
+          ...(ephemeral ? { data: { flags: 64 } } : {}),
+        });
+      } catch (e) {
+        console.error("defer dispatch failed, handling inline", e);
+      }
+    }
     try {
       return await route(interaction);
     } catch (err) {
@@ -91,7 +148,7 @@ async function route(i: any) {
     case "status":
       return handleStatus(i);
     case "settle":
-      return handleSettle(i);
+      return reply(await settleWork(i), true);
     default:
       return reply(`Unknown command: \`${commandName(i)}\``);
   }
@@ -349,46 +406,7 @@ async function handleJob(i: any) {
   const sub = subcommand(i);
   const config = await store.getConfig(gid);
 
-  if (sub === "open") {
-    const name = option<string>(i, "name")!.trim();
-    const lineId = option<string>(i, "product")!;
-    const line = (await store.listLines(gid)).find((l) => l.id === lineId);
-    if (!line) return reply("⚠️ Pick a product line from the list.");
-
-    let channel: { id: string };
-    try {
-      const opsCat = await ensureCategory(gid, config, "operationsCategoryId", "Operations");
-      channel = await rest.createChannel(gid, {
-        name: `${slug(name) || "job"}-${BigInt(i.id).toString(36).slice(-5)}`,
-        type: 0,
-        parent_id: opsCat,
-        topic: `Cutter job — ${name} (${line.name})`,
-      });
-    } catch (e) {
-      console.error("channel create failed", e);
-      return reply("⚠️ I couldn't create the job channel — make sure I have **Manage Channels**, then try again.");
-    }
-
-    await store.createJob(gid, {
-      id: i.id,
-      name,
-      lineId,
-      status: "open",
-      channelId: channel.id,
-      guildId: gid,
-      createdBy: actorId(i),
-      createdAt: snowflakeTs(i.id),
-    });
-    try {
-      await rest.postMessage(
-        channel.id,
-        `🔪 **${name}** — ${line.name}\nLog the op right here: \`/deposit\` · \`/process\` · \`/sale\`. \`/ledger\` shows history, \`/status\` tracks the pool.`
-      );
-    } catch {
-      /* welcome message is best-effort */
-    }
-    return reply(`🟢 Opened **${name}** _(${line.name})_ → <#${channel.id}>`, false);
-  }
+  if (sub === "open") return reply(await jobOpenWork(i), false);
 
   if (sub === "list") {
     const jobs = await store.listOpenJobs(gid);
@@ -642,13 +660,56 @@ function bestLevel(roles: string[] | undefined, rankMap: Record<string, number>)
   return best;
 }
 
-async function handleSettle(i: any) {
+async function jobOpenWork(i: any): Promise<string> {
+  const gid = guildId(i);
+  const config = await store.getConfig(gid);
+  const name = option<string>(i, "name")!.trim();
+  const lineId = option<string>(i, "product")!;
+  const line = (await store.listLines(gid)).find((l) => l.id === lineId);
+  if (!line) return "⚠️ Pick a product line from the list.";
+
+  let channel: { id: string };
+  try {
+    const opsCat = await ensureCategory(gid, config, "operationsCategoryId", "Operations");
+    channel = await rest.createChannel(gid, {
+      name: `${slug(name) || "job"}-${BigInt(i.id).toString(36).slice(-5)}`,
+      type: 0,
+      parent_id: opsCat,
+      topic: `Cutter job — ${name} (${line.name})`,
+    });
+  } catch (e) {
+    console.error("channel create failed", e);
+    return "⚠️ I couldn't create the job channel — make sure I have **Manage Channels**, then try again.";
+  }
+
+  await store.createJob(gid, {
+    id: i.id,
+    name,
+    lineId,
+    status: "open",
+    channelId: channel.id,
+    guildId: gid,
+    createdBy: actorId(i),
+    createdAt: snowflakeTs(i.id),
+  });
+  try {
+    await rest.postMessage(
+      channel.id,
+      `🔪 **${name}** — ${line.name}\nLog the op right here: \`/deposit\` · \`/process\` · \`/sale\`. \`/ledger\` shows history, \`/status\` tracks the pool.`
+    );
+  } catch {
+    /* welcome message is best-effort */
+  }
+  return `🟢 Opened **${name}** _(${line.name})_ → <#${channel.id}>`;
+}
+
+async function settleWork(i: any): Promise<string> {
   const job = await resolveJob(i);
-  if (isErr(job)) return reply(job.error);
+  if (isErr(job)) return job.error;
   const gid = guildId(i);
   const config = await store.getConfig(gid);
   if (job.createdBy !== actorId(i) && !isOfficer(i, config)) {
-    return reply("⛔ Only whoever opened this job (or an officer) can settle it.");
+    return "⛔ Only whoever opened this job (or an officer) can settle it.";
   }
 
   const [entries, catalog, recipes, lines, ranks] = await Promise.all([
@@ -659,9 +720,9 @@ async function handleSettle(i: any) {
     store.listRanks(gid),
   ]);
   const line = lines.find((l) => l.id === job.lineId);
-  if (!line) return reply("⚠️ This job's product line is missing.");
+  if (!line) return "⚠️ This job's product line is missing.";
   if (!entries.some((e) => e.type === "sale")) {
-    return reply("⚠️ No sales logged — nothing to settle. Log a `/sale` first.");
+    return "⚠️ No sales logged — nothing to settle. Log a `/sale` first.";
   }
 
   // resolve each participant's rank level from their Discord roles
@@ -732,5 +793,5 @@ async function handleSettle(i: any) {
     console.error("settle record/archive failed", e);
   }
 
-  return reply(`✅ Settled **${job.name}** — ${m(result.revenue)} paid out. Full record posted to the channel; archived read-only.`, true);
+  return `✅ Settled **${job.name}** — ${m(result.revenue)} paid out. Full record posted to the channel; archived read-only.`;
 }

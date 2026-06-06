@@ -41,3 +41,12 @@ export function postMessage(channelId: string, content: string): Promise<any> {
 export function getMember(guildId: string, userId: string): Promise<{ roles: string[] }> {
   return dapi(`/guilds/${guildId}/members/${userId}`);
 }
+
+/** Edit the original (deferred) interaction reply via the interaction-token webhook. */
+export async function editOriginal(appId: string, token: string, content: string): Promise<void> {
+  const res = await fetch(
+    `${API}/webhooks/${appId}/${token}/messages/@original`,
+    { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ content }) }
+  );
+  if (!res.ok) console.error("editOriginal failed", res.status, await res.text());
+}
