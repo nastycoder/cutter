@@ -67,4 +67,18 @@ export function buildCosts(
   return out;
 }
 
+/**
+ * Effective per-unit value of every item for deposits/withdrawals:
+ * base = catalog value, intermediate = build cost, final = the line's reference price.
+ */
+export function itemValues(
+  catalog: CatalogItem[],
+  recipes: RecipeStep[],
+  lines: ProductLine[]
+): Record<string, number> {
+  const v = buildCosts(catalog, recipes);
+  for (const l of lines) v[l.finalItemId] = l.referencePrice;
+  return v;
+}
+
 export const ENGINE_READY = false;

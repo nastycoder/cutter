@@ -60,14 +60,14 @@ Table `Cutter`, on-demand. One partition holds an entire job's ledger → one Qu
 
 | Entity | PK | SK | Notes |
 |---|---|---|---|
-| Guild config (dials) | `GUILD#<gid>` | `CONFIG` | labor rate, split, commission %, rank multipliers, officer role (reference price is per-line) |
+| Guild config (dials) | `GUILD#<gid>` | `CONFIG` | labor rate, split, commission %, rank multipliers, officer role, Operations/Archive category ids (reference price is per-line) |
 | Product line | `GUILD#<gid>` | `LINE#<lineId>` | name, final-product item, reference sell price (cocaine, honey, moonshine, meth…) |
 | Catalog item | `GUILD#<gid>` | `ITEM#<itemId>` | name, kind (base/intermediate/final), value, source (farmed/bought), line (or shared, e.g. cleaning kit) |
 | Recipe step | `GUILD#<gid>` | `RECIPE#<lineId>#<step>` | inputs[], output item + yield (**fixed n** or **variable/range**), can-fail flag (info only) |
 | Rank map | `GUILD#<gid>` | `RANK#<roleId>` | → level 1–5 |
-| Channel pointer | `GUILD#<gid>` | `CHANNEL#<channelId>` | → current open jobId (cleared on settle) |
+| Channel pointer | `GUILD#<gid>` | `CHANNEL#<channelId>` | → the job bound to that channel (one job per auto-created channel; cleared on close) |
 | Job meta | `JOB#<jobId>` | `META` | name, status (open/settling/closed), channelId, createdBy/At, settledAt |
-| Ledger entry | `JOB#<jobId>` | `ENTRY#<ulid>` | type (deposit/process/withdraw/sale), actor, payload, ts (ULID = time-sortable) |
+| Ledger entry | `JOB#<jobId>` | `ENTRY#<interactionId>` | type (deposit/process/withdraw/sale), actor, payload; keyed by Discord interaction id (time-sortable + idempotent) |
 | Payout (audit) | `JOB#<jobId>` | `PAYOUT#<userId>` | written at settle: reimbursed/commission/work/rank/net |
 
 **GSI1** (list jobs by status): `GSI1PK=GUILD#<gid>#<status>`, `GSI1SK=<createdAt>` — only Job-meta items project.
@@ -79,36 +79,38 @@ list open jobs = Query GSI1; **settle = Query `JOB#<jobId>` (all entries) → en
 
 ## 4. Command surface
 
-**Targeting a job.** Multiple jobs can be open at once, so **every ledger command takes a `job:` option**
-(autocomplete lists open jobs by name). Resolution order: (1) explicit `job:`, else (2) the channel's
-**default job** — the one opened in that channel, else (3) error: "no job here — pass `job:`." Run each op in
-its own channel and you almost never type `job:`; run several in one channel and you pick explicitly. Item/step
-options use **autocomplete** scoped to the job's product line.
+**The channel is the job.** `/job open` **auto-creates a dedicated channel** (`#name-<id>`, under an
+**Operations** category) and binds the job to it. Every job-scoped command resolves the job from **the channel
+it's run in** — there's no `job:` argument to confuse anyone; you just run the command in the op's channel.
+Concurrent ops (even same product) each get their own channel, fully isolated. On close/settle the channel is
+**archived** (renamed, moved to an **Archive** category, set read-only). Item/step options use **autocomplete**
+scoped to the channel's product line.
 
-### Member
+### Member (anyone)
 | Command | Does |
 |---|---|
-| `/job open name: product:<line>` | start a job for a product line (cocaine, honey, …), bound to the channel |
-| `/job list` | list open jobs |
-| `/status [job:]` | current state — pool inventory, totals, and **unaccounted** product (made but unsold/unwithdrawn) before settling |
-| `/ledger [job:]` | full chronological history — every deposit/process/sale/withdraw, with who & when (paged) |
-| `/deposit item:<auto> qty: [job:]` · `/deposit cash: [job:]` | add materials / cash to the pool (valued at catalog) |
-| `/process step:<auto> made: [job:]` | log a craft — just report what you **made**; labor credited on output produced |
-| `/withdraw item:<auto> qty: [job:]` · `/withdraw cash: [job:]` | pull from pool (debited at value) |
-| `/sale qty: cash: [by:@user] [job:]` | log a real-cash sale of the job's product (sums into revenue) |
-| `/me [job:]` | my current standing in a job |
+| `/job open name: product:<line>` | open a job — **auto-creates its channel** under Operations |
+| `/job list` | list open jobs (with channel links) |
+| `/job close` | close + archive the channel — **the opener or an officer** |
+| `/status` | current state — pool inventory, totals, and **unaccounted** product (made but unsold/unwithdrawn) |
+| `/ledger` | full chronological history — every deposit/process/sale/withdraw, with who & when |
+| `/deposit item:<auto> qty:` · `/deposit cash:` | add materials / cash to the pool (valued at catalog) |
+| `/process step:<auto> made:` | log a craft — just report what you **made**; labor credited on output produced |
+| `/withdraw item:<auto> qty:` · `/withdraw cash:` | pull from pool (debited at value) |
+| `/sale qty: cash: [by:@user]` | log a real-cash sale of the job's product (sums into revenue) |
+| `/me` | my current standing in this channel's job |
 
 ### Officer (gated to the configured officer role)
 | Command | Does |
 |---|---|
 | `/setup` | **first-run wizard** — seed starting values + map Discord roles → levels + set the officer role (§4.1). Gated on Discord *Manage Server*, since no officer role exists yet |
-| `/settle [job:]` | run the engine, post payout table, close the job |
-| `/void job: entry:` | reverse a mistaken entry — appends a logged reversal (never hard-deletes) |
-| `/job reopen job:` | reopen a settled job for corrections (audit-logged) |
+| `/settle` | run the engine on this channel's job, post the payout table, archive the channel |
+| `/void entry:` | reverse a mistaken entry — appends a logged reversal (never hard-deletes) |
+| `/job reopen` | reopen a settled job for corrections (audit-logged) |
 | `/config` · `/config set <dial> <value>` | open the stepper **panel** (§4.1), or set a dial directly |
-| `/catalog set item: value: source:` · `/catalog list` | manage prices |
+| `/catalog list` · `/catalog add` · `/catalog set` · `/catalog remove` | manage items — select-to-edit; intermediates auto-valued (build cost) |
 | `/recipe line add` · `/recipe step set` · `/recipe list` | define product lines & chains (modal + paste shorthand, §4.2) |
-| `/rank map role:@role level:` · `/rank weights` | role→level, level→multiplier |
+| `/rank map` · `/rank weights` · `/rank list` · `/rank unmap` | role→level & level→multiplier |
 
 ### 4.1 Interactive components — `/setup` wizard & `/config` panel
 
@@ -182,10 +184,10 @@ build-cost ladders, and yield handling all rebuild from the data.
 
 ### 4.3 Status & ledger
 
-`/ledger [job:]` prints the **append-only history** — every entry with actor and timestamp, paged with buttons.
+`/ledger` prints the **append-only history** — every entry with actor and timestamp.
 It's the audit trail; any settlement can be traced back through it.
 
-`/status [job:]` is the **live reconciliation**: current pool inventory (raw · intermediate · final · cash),
+`/status` is the **live reconciliation**: current pool inventory (raw · intermediate · final · cash),
 running totals (deposited / made / sold / withdrawn), and an **Unaccounted** section flagging anything that
 blocks a clean settle — final product made but not yet sold or withdrawn, and intermediates still sitting
 mid-chain. A job settles cleanly when nothing's unaccounted (or the remainder is explicitly valued as leftover).
@@ -252,8 +254,9 @@ Tony $12,518 · Lou $10,855, summing to $220,000.
 
 ## 7. Permissions & config
 
-- **Officer gating**: a configured **officer role** (e.g. Capo+), checked against `interaction.member.roles`.
-  Officer-only: settle, catalog, recipe, config, rank. The role id lives in `CONFIG`.
+- **Officer gating**: a configured **officer role** (e.g. Capo+), checked against `interaction.member.roles`
+  (falls back to Discord *Manage Server* before one is set). Officer-only: settle, void, job-reopen, catalog,
+  recipe, config, rank. **`/job open` is open to all; `/job close` = the opener or an officer.** The role id lives in `CONFIG`.
 - All economy values live in `CONFIG`/`ITEM`/`RECIPE` items — **nothing hardcoded**; the engine reads them at runtime.
 - **Guild-scoped** from day one (every key carries `<gid>`), so multi-crew is possible later at no refactor cost,
   even though we target the one crew now.
@@ -278,19 +281,23 @@ portal's *Interactions Endpoint URL* → run `register-commands`.
 
 | Phase | Deliverable |
 |---|---|
-| **0 · Skeleton** | CDK stack, secret, signature verify, `/ping`→pong working end to end in Discord |
-| **1 · Config** | data model + `/setup` wizard (seed defaults, role→level map, officer role) + `/catalog` `/config set` `/rank` |
-| **2 · Ledger** | `/job` lifecycle + `/deposit` `/process` `/withdraw` `/sale` + `/status` `/ledger` |
+| **0 · Skeleton** ✅ | CDK stack, secret, signature verify, `/ping`→pong working end to end in Discord |
+| **1 · Config** ✅ | data model + `/setup` + `/catalog` (CRUD + autocomplete) + `/config` + `/rank` |
+| **2 · Ledger** ◷ | **auto-channel** `/job` lifecycle + `/deposit` `/process` `/withdraw` `/sale` + `/ledger`; `/status` next |
 | **3 · Settle** | engine package + golden test + `/settle` output |
-| **4 · Polish** | autocomplete, embeds, permissions, **`/config` stepper panel**, `/me` projection, loss & debt edge cases |
+| **4 · Polish** | **`/config` stepper panel**, `/me`, `/void` + `/job reopen`, loss & debt edge cases, rendered-image payouts |
 | **5 · Harden** | full test suite, observability, README/runbook |
 
 ---
 
 ## 10. Decisions
 
-- ✅ **Job model** — multiple concurrent jobs, **one open per channel**; `job:` overrides.
-- ✅ **Officer gating** — dedicated, configurable **officer role**.
+- ✅ **Job model** — `/job open` **auto-creates a dedicated channel** per job (under an *Operations* category)
+  and binds it; every command resolves the job from its channel (no `job:` argument). Closed jobs are archived
+  (read-only, *Archive* category). **Anyone** opens a job; the **opener or an officer** closes it.
+- ✅ **Catalog** — items are a first-class registry edited by **select-then-edit** (autocomplete): `/catalog
+  add|set|remove|list`. Intermediates **auto-value at build cost** (derived live from recipes); only base items are priced.
+- ✅ **Officer gating** — dedicated, configurable **officer role** (Manage Server fallback before setup).
 - ✅ **Output** — code-block table now; rendered-image payouts later.
 - ✅ **Product lines** — fully data-driven; **honey seeded**, cocaine/moonshine/meth added via `/recipe`
   (cocaine has a variable-yield step — engine supports fixed & variable yields). See §4.2 / §5.

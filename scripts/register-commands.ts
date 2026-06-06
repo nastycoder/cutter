@@ -238,6 +238,11 @@ const commands = [
     description: "Show this channel's job history",
     type: 1,
   },
+  {
+    name: "status",
+    description: "Show this channel's job status & reconciliation",
+    type: 1,
+  },
 ];
 
 async function main() {

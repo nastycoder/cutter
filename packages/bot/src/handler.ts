@@ -7,7 +7,7 @@ import {
 import * as store from "./store";
 import * as rest from "./rest";
 import { getSecret } from "./secret";
-import { buildCosts } from "@cutter/engine";
+import { buildCosts, itemValues } from "@cutter/engine";
 import type { Config } from "@cutter/shared";
 import {
   json,
@@ -88,6 +88,8 @@ async function route(i: any) {
       return handleSale(i);
     case "ledger":
       return handleLedger(i);
+    case "status":
+      return handleStatus(i);
     default:
       return reply(`Unknown command: \`${commandName(i)}\``);
   }
@@ -508,4 +510,81 @@ async function handleLedger(i: any) {
   const recent = entries.slice(-25).map(fmt).join("\n");
   const more = entries.length > 25 ? `\n_…${entries.length - 25} earlier_` : "";
   return reply(`📜 **${job.name}** — ledger (${entries.length} entries)\n${recent}${more}`);
+}
+
+async function handleStatus(i: any) {
+  const job = await resolveJob(i);
+  if (isErr(job)) return reply(job.error);
+  const gid = guildId(i);
+  const [entries, catalog, recipes, lines, config] = await Promise.all([
+    store.listEntries(job.id),
+    store.listCatalog(gid),
+    store.listRecipes(gid),
+    store.listLines(gid),
+    store.getConfig(gid),
+  ]);
+  const line = lines.find((l) => l.id === job.lineId);
+  const finalId = line?.finalItemId;
+  const finalName = catalog.find((c) => c.id === finalId)?.name ?? finalId ?? "product";
+  const values = itemValues(catalog, recipes, lines);
+  const stepOut = new Map(
+    recipes.filter((r) => r.lineId === job.lineId).map((r) => [r.step, r.output.itemId])
+  );
+
+  const per = new Map<string, { dep: number; lab: number; wd: number; sold: number }>();
+  const G = (u: string) => {
+    if (!per.has(u)) per.set(u, { dep: 0, lab: 0, wd: 0, sold: 0 });
+    return per.get(u)!;
+  };
+  let revenue = 0,
+    madeFinal = 0,
+    soldQty = 0,
+    wdFinalQty = 0,
+    totalDep = 0;
+
+  for (const e of entries as any[]) {
+    if (e.type === "deposit") {
+      const v = e.deposit.cash ?? (values[e.deposit.itemId] ?? 0) * (e.deposit.qty ?? 0);
+      G(e.actor).dep += v;
+      totalDep += v;
+    } else if (e.type === "process") {
+      G(e.actor).lab += (e.process.made ?? 0) * config.laborRate;
+      if (stepOut.get(e.process.step) === finalId) madeFinal += e.process.made ?? 0;
+    } else if (e.type === "withdraw") {
+      const v = e.withdraw.cash ?? (values[e.withdraw.itemId] ?? 0) * (e.withdraw.qty ?? 0);
+      G(e.actor).wd += v;
+      if (e.withdraw.itemId === finalId) wdFinalQty += e.withdraw.qty ?? 0;
+    } else if (e.type === "sale") {
+      revenue += e.sale.cash;
+      soldQty += e.sale.qty;
+      G(e.sale.by).sold += e.sale.cash;
+    }
+  }
+
+  const unaccounted = madeFinal - soldQty - wdFinalQty;
+  const m = (n: number) => `$${Math.round(n).toLocaleString()}`;
+  const members = [...per.entries()]
+    .sort((a, b) => b[1].dep + b[1].lab + b[1].sold - (a[1].dep + a[1].lab + a[1].sold))
+    .map(
+      ([u, c]) =>
+        `• <@${u}> — in ${m(c.dep)} · labor ${m(c.lab)}${c.sold ? ` · sold ${m(c.sold)}` : ""}${
+          c.wd ? ` · out ${m(c.wd)}` : ""
+        }`
+    );
+
+  const recon =
+    unaccounted > 0
+      ? `⚠️ **${unaccounted} ${finalName}** made but not yet sold or withdrawn — clear before settling.`
+      : madeFinal > 0
+        ? `✅ All ${finalName} accounted for.`
+        : `_No ${finalName} produced yet._`;
+
+  return reply(
+    [
+      `📊 **${job.name}** _(${line?.name ?? job.lineId})_ · ${job.status}`,
+      members.length ? "**Contributors**\n" + members.join("\n") : "_No contributions yet._",
+      `**Pool** — deposited ${m(totalDep)} · made ${madeFinal} ${finalName} · sold ${soldQty} for ${m(revenue)}`,
+      recon,
+    ].join("\n")
+  );
 }
