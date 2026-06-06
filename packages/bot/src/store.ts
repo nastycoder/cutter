@@ -53,6 +53,9 @@ export async function deleteCatalogItem(gid: string, id: string): Promise<void> 
 export async function putRecipe(gid: string, r: RecipeStep): Promise<void> {
   await db.putItem({ PK: db.gpk(gid), SK: `RECIPE#${r.lineId}#${r.step}`, ...r });
 }
+export async function listRecipes(gid: string): Promise<RecipeStep[]> {
+  return db.queryPrefix<RecipeStep>(db.gpk(gid), "RECIPE#");
+}
 
 export async function putRank(gid: string, roleId: string, level: number): Promise<void> {
   await db.putItem({ PK: db.gpk(gid), SK: `RANK#${roleId}`, roleId, level });

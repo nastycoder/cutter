@@ -9,6 +9,7 @@ import {
   GetSecretValueCommand,
 } from "@aws-sdk/client-secrets-manager";
 import * as store from "./store";
+import { buildCosts } from "@cutter/engine";
 import {
   json,
   reply,
@@ -160,7 +161,9 @@ async function handleAutocomplete(i: any) {
   const focused = focusedOption(i);
   if (focused?.name === "item") {
     const q = focused.value.toLowerCase();
-    const items = await store.listCatalog(guildId(i));
+    let items = await store.listCatalog(guildId(i));
+    // /catalog set only edits base items — intermediates are derived (build cost).
+    if (subcommand(i) === "set") items = items.filter((it) => it.kind === "base");
     const choices = items
       .filter((it) => it.name.toLowerCase().includes(q) || it.id.includes(q))
       .map((it) => ({
@@ -197,6 +200,11 @@ async function handleCatalog(i: any) {
     const id = option<string>(i, "item")!;
     const item = await store.getCatalogItem(gid, id);
     if (!item) return reply("⚠️ Pick an existing item from the list (or use `/catalog add`).");
+    if (item.kind !== "base") {
+      return reply(
+        `⚠️ **${item.name}** is ${item.kind === "final" ? "a final product (price = the line's reference price)" : "auto-valued from its recipe (build cost)"} — edit the base ingredients or recipe instead.`
+      );
+    }
     item.value = option<number>(i, "value")!;
     const source = option<"farmed" | "bought">(i, "source");
     if (source) item.source = source;
@@ -216,17 +224,31 @@ async function handleCatalog(i: any) {
   // list
   const items = await store.listCatalog(gid);
   if (!items.length) return reply("📦 Catalog is empty — run `/setup` first.");
-  const fmt = (kind: string) =>
-    items
-      .filter((it) => it.kind === kind)
-      .map((it) => `${it.name} $${it.value}${it.source ? ` _(${it.source})_` : ""}`)
-      .join(" · ") || "—";
+  const recipes = await store.listRecipes(gid);
+  const lines = await store.listLines(gid);
+  const refByFinal = new Map(lines.map((l) => [l.finalItemId, l.referencePrice]));
+  const costs = buildCosts(items, recipes);
+  const money = (n: number) => `$${+n.toFixed(2)}`;
+
+  const base = items
+    .filter((it) => it.kind === "base")
+    .map((it) => `${it.name} ${money(it.value)}${it.source ? ` _(${it.source})_` : ""}`)
+    .join(" · ") || "—";
+  const inter = items
+    .filter((it) => it.kind === "intermediate")
+    .map((it) => `${it.name} ${money(costs[it.id] ?? 0)}`)
+    .join(" · ") || "—";
+  const fin = items
+    .filter((it) => it.kind === "final")
+    .map((it) => `${it.name} ${money(refByFinal.get(it.id) ?? costs[it.id] ?? 0)}`)
+    .join(" · ") || "—";
+
   return reply(
     [
       "📦 **Catalog**",
-      `**Base:** ${fmt("base")}`,
-      `**Intermediate:** ${fmt("intermediate")}  _(cost derived from recipes)_`,
-      `**Final:** ${fmt("final")}`,
+      `**Base:** ${base}`,
+      `**Intermediate:** ${inter}  _(auto build cost)_`,
+      `**Final:** ${fin}  _(sells at reference price)_`,
     ].join("\n")
   );
 }
