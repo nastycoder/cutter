@@ -3,8 +3,8 @@ import type {
   CatalogItem,
   RecipeStep,
   ProductLine,
-  RankMap,
   LedgerEntry,
+  MemberPayout,
   SettlementResult,
 } from "@cutter/shared";
 
@@ -13,17 +13,127 @@ export interface SettleInput {
   catalog: CatalogItem[];
   recipes: RecipeStep[];
   line: ProductLine;
-  ranks: RankMap;
   entries: LedgerEntry[];
+  /** userId -> rank level (1..5). Missing members default to level 5. */
+  memberLevels: Record<string, number>;
 }
 
+const round2 = (x: number) => Math.round(x * 100) / 100;
+
 /**
- * Pure settlement engine — the waterfall from DESIGN.md §5.
- * TODO (Phase 3): implement reimburse → labor → revenue → commission →
- * distributable → work/rank split → net, with the $220K golden test.
+ * Pure settlement engine — the waterfall from DESIGN.md §5:
+ * reimburse capital → labor → revenue → commission → distributable →
+ * work/rank split → net. Money ties to revenue − withdrawals to the cent.
  */
-export function settle(_input: SettleInput): SettlementResult {
-  throw new Error("settle() not yet implemented — Phase 3");
+export function settle(input: SettleInput): SettlementResult {
+  const { config, catalog, recipes, line, entries, memberLevels } = input;
+  const values = itemValues(catalog, recipes, [line]);
+  const levelOf = (u: string) => memberLevels[u] ?? 5;
+  const weightOf = (u: string) => config.rankMultipliers[levelOf(u)] ?? 1;
+
+  interface Acc {
+    reimbursed: number;
+    commission: number;
+    work: number;
+    rank: number;
+    withdrawals: number;
+    material: number;
+    labor: number;
+  }
+  const M = new Map<string, Acc>();
+  const get = (u: string): Acc => {
+    let a = M.get(u);
+    if (!a) {
+      a = { reimbursed: 0, commission: 0, work: 0, rank: 0, withdrawals: 0, material: 0, labor: 0 };
+      M.set(u, a);
+    }
+    return a;
+  };
+
+  let revenue = 0;
+  for (const e of entries) {
+    if (e.type === "deposit" && e.deposit) {
+      const v = e.deposit.cash ?? (values[e.deposit.itemId!] ?? 0) * (e.deposit.qty ?? 0);
+      const a = get(e.actor);
+      a.reimbursed += v;
+      a.material += v;
+    } else if (e.type === "process" && e.process) {
+      get(e.actor).labor += (e.process.made ?? 0) * config.laborRate;
+    } else if (e.type === "withdraw" && e.withdraw) {
+      const v = e.withdraw.cash ?? (values[e.withdraw.itemId!] ?? 0) * (e.withdraw.qty ?? 0);
+      get(e.actor).withdrawals += v;
+    } else if (e.type === "sale" && e.sale) {
+      revenue += e.sale.cash;
+      get(e.sale.by).commission += config.commissionPct * e.sale.cash;
+    }
+  }
+
+  const sum = (f: (a: Acc) => number) => [...M.values()].reduce((s, a) => s + f(a), 0);
+  const totalReimburse = sum((a) => a.reimbursed);
+  const totalCommission = sum((a) => a.commission);
+  let distributable = revenue - totalReimburse - totalCommission;
+  const loss = distributable < 0;
+
+  if (loss) {
+    // No commission; pay reimbursements pro-rata from the available revenue.
+    const ratio = totalReimburse > 0 ? Math.max(0, revenue) / totalReimburse : 0;
+    for (const a of M.values()) {
+      a.commission = 0;
+      a.reimbursed = a.reimbursed * ratio;
+    }
+    distributable = 0;
+  }
+
+  const workPool = distributable * config.workSplitPct;
+  const rankPool = distributable - workPool;
+  const totalContribution = sum((a) => a.material + a.labor);
+  const totalWeight = [...M.keys()].reduce((s, u) => s + weightOf(u), 0);
+
+  for (const [u, a] of M) {
+    const contribution = a.material + a.labor;
+    a.work = totalContribution > 0 ? workPool * (contribution / totalContribution) : 0;
+    a.rank = totalWeight > 0 ? rankPool * (weightOf(u) / totalWeight) : 0;
+  }
+
+  const perMember: MemberPayout[] = [...M.entries()].map(([userId, a]) => ({
+    userId,
+    level: levelOf(userId),
+    reimbursed: a.reimbursed,
+    commission: a.commission,
+    work: a.work,
+    rank: a.rank,
+    withdrawals: a.withdrawals,
+    net: a.reimbursed + a.commission + a.work + a.rank - a.withdrawals,
+  }));
+
+  // round nets to the cent; push the rounding remainder onto the largest net
+  const target = round2(revenue - sum((a) => a.withdrawals));
+  let rounded = 0;
+  for (const p of perMember) {
+    p.net = round2(p.net);
+    rounded += p.net;
+  }
+  if (perMember.length) {
+    const diff = round2(target - rounded);
+    if (Math.abs(diff) >= 0.01) {
+      let top = perMember[0];
+      for (const p of perMember) if (p.net > top.net) top = p;
+      top.net = round2(top.net + diff);
+    }
+  }
+  const tiesOut = Math.abs(perMember.reduce((s, p) => s + p.net, 0) - target) < 0.011;
+
+  return {
+    perMember,
+    revenue,
+    reimbursed: round2(sum((a) => a.reimbursed)),
+    commission: round2(sum((a) => a.commission)),
+    distributable,
+    workPool,
+    rankPool,
+    loss,
+    tiesOut,
+  };
 }
 
 /**

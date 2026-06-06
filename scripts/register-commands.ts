@@ -243,6 +243,11 @@ const commands = [
     description: "Show this channel's job status & reconciliation",
     type: 1,
   },
+  {
+    name: "settle",
+    description: "Settle this channel's job and post the payout (officers only)",
+    type: 1,
+  },
 ];
 
 async function main() {

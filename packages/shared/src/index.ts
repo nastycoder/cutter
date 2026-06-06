@@ -68,6 +68,7 @@ export interface Job {
 
 export interface MemberPayout {
   userId: string;
+  level: number;
   reimbursed: number;
   commission: number;
   work: number;
@@ -80,6 +81,10 @@ export interface SettlementResult {
   perMember: MemberPayout[];
   revenue: number;
   reimbursed: number;
+  commission: number;
   distributable: number;
+  workPool: number;
+  rankPool: number;
+  loss: boolean;
   tiesOut: boolean;
 }

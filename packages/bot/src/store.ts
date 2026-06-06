@@ -132,6 +132,13 @@ export async function listEntries(jobId: string): Promise<LedgerEntry[]> {
   return db.queryPrefix<LedgerEntry>(`JOB#${jobId}`, "ENTRY#");
 }
 
+export async function putPayout(
+  jobId: string,
+  p: { userId: string; level: number; reimbursed: number; commission: number; work: number; rank: number; net: number }
+): Promise<void> {
+  await db.putItem({ PK: `JOB#${jobId}`, SK: `PAYOUT#${p.userId}`, ...p });
+}
+
 /** Seed the honey product line (the chain we've fully specced) + default dials. */
 export async function seedDefaults(gid: string): Promise<void> {
   await putLine(gid, {

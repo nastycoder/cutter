@@ -7,7 +7,7 @@ import {
 import * as store from "./store";
 import * as rest from "./rest";
 import { getSecret } from "./secret";
-import { buildCosts, itemValues, inventory } from "@cutter/engine";
+import { buildCosts, itemValues, inventory, settle } from "@cutter/engine";
 import type { Config } from "@cutter/shared";
 import {
   json,
@@ -90,6 +90,8 @@ async function route(i: any) {
       return handleLedger(i);
     case "status":
       return handleStatus(i);
+    case "settle":
+      return handleSettle(i);
     default:
       return reply(`Unknown command: \`${commandName(i)}\``);
   }
@@ -601,4 +603,95 @@ async function handleStatus(i: any) {
       recon,
     ].join("\n")
   );
+}
+
+function bestLevel(roles: string[] | undefined, rankMap: Record<string, number>): number {
+  let best = 5;
+  for (const r of roles ?? []) {
+    const lvl = rankMap[r];
+    if (lvl != null && lvl < best) best = lvl;
+  }
+  return best;
+}
+
+async function handleSettle(i: any) {
+  const job = await resolveJob(i);
+  if (isErr(job)) return reply(job.error);
+  const gid = guildId(i);
+  const config = await store.getConfig(gid);
+  if (!isOfficer(i, config)) return reply("⛔ Only officers can settle a job.");
+
+  const [entries, catalog, recipes, lines, ranks] = await Promise.all([
+    store.listEntries(job.id),
+    store.listCatalog(gid),
+    store.listRecipes(gid),
+    store.listLines(gid),
+    store.listRanks(gid),
+  ]);
+  const line = lines.find((l) => l.id === job.lineId);
+  if (!line) return reply("⚠️ This job's product line is missing.");
+  if (!entries.some((e) => e.type === "sale")) {
+    return reply("⚠️ No sales logged — nothing to settle. Log a `/sale` first.");
+  }
+
+  // resolve each participant's rank level from their Discord roles
+  const rankMap = Object.fromEntries(ranks.map((r) => [r.roleId, r.level]));
+  const participants = new Set<string>();
+  for (const e of entries as any[]) participants.add(e.type === "sale" ? e.sale.by : e.actor);
+  const levels = await Promise.all(
+    [...participants].map(async (uid) => {
+      try {
+        const mem = await rest.getMember(gid, uid);
+        return [uid, bestLevel(mem.roles, rankMap)] as const;
+      } catch {
+        return [uid, 5] as const;
+      }
+    })
+  );
+  const memberLevels = Object.fromEntries(levels);
+
+  const result = settle({ config, catalog, recipes, line, entries, memberLevels });
+
+  // persist payouts, close, archive
+  await Promise.all(
+    result.perMember.map((p) =>
+      store.putPayout(job.id, {
+        userId: p.userId,
+        level: p.level,
+        reimbursed: p.reimbursed,
+        commission: p.commission,
+        work: p.work,
+        rank: p.rank,
+        net: p.net,
+      })
+    )
+  );
+  await store.setJobStatus(gid, job.id, "closed");
+  try {
+    const archiveCat = await ensureCategory(gid, config, "archiveCategoryId", "Archive");
+    await rest.modifyChannel(job.channelId, {
+      name: `💰-${slug(job.name) || "job"}-${BigInt(job.id).toString(36).slice(-5)}`,
+      parent_id: archiveCat,
+      permission_overwrites: [{ id: gid, type: 0, deny: "2048" }],
+    });
+  } catch (e) {
+    console.error("settle archive failed", e);
+  }
+
+  const m = (n: number) => `$${Math.round(n).toLocaleString()}`;
+  const finalName = catalog.find((c) => c.id === line.finalItemId)?.name ?? "product";
+  const unsold = (inventory(entries, recipes.filter((r) => r.lineId === job.lineId), line.finalItemId)[line.finalItemId] ?? 0);
+  const rows = [...result.perMember]
+    .sort((a, b) => b.net - a.net)
+    .map((p) => {
+      const earned = p.net - p.reimbursed;
+      return `**<@${p.userId}>** — take-home **${m(p.net)}**  _(capital back ${m(p.reimbursed)} · earned ${m(earned)})_`;
+    });
+  const foot = result.loss
+    ? `⚠️ **Loss** — revenue didn't cover capital; reimbursements paid pro-rata, no profit split.`
+    : `Pool: ${m(result.revenue)} − reimbursed ${m(result.reimbursed)} − commission ${m(result.commission)} → **${m(result.distributable)}** split ${Math.round(config.workSplitPct * 100)}/${Math.round((1 - config.workSplitPct) * 100)}.` +
+      (result.tiesOut ? "" : " ⚠️ rounding mismatch.") +
+      (unsold > 0.0001 ? `\n⚠️ ${(+unsold.toFixed(1))} ${finalName} were unsold — not included in this payout.` : "");
+
+  return reply([`💰 **SETTLEMENT — ${job.name}** _(${line.name})_ · ${m(result.revenue)}`, ...rows, foot].join("\n"), false);
 }

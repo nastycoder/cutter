@@ -37,3 +37,7 @@ export function postMessage(channelId: string, content: string): Promise<any> {
     body: JSON.stringify({ content }),
   });
 }
+
+export function getMember(guildId: string, userId: string): Promise<{ roles: string[] }> {
+  return dapi(`/guilds/${guildId}/members/${userId}`);
+}
