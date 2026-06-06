@@ -46,6 +46,9 @@ export async function putCatalogItem(gid: string, item: CatalogItem): Promise<vo
 export async function getCatalogItem(gid: string, id: string): Promise<CatalogItem | undefined> {
   return db.getItem<CatalogItem>(db.gpk(gid), `ITEM#${id}`);
 }
+export async function deleteCatalogItem(gid: string, id: string): Promise<void> {
+  await db.deleteItem(db.gpk(gid), `ITEM#${id}`);
+}
 
 export async function putRecipe(gid: string, r: RecipeStep): Promise<void> {
   await db.putItem({ PK: db.gpk(gid), SK: `RECIPE#${r.lineId}#${r.step}`, ...r });

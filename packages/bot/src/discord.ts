@@ -41,6 +41,31 @@ export function guildId(i: any): string {
   return i.guild_id;
 }
 
+/** The option the user is currently typing in an autocomplete interaction. */
+export function focusedOption(i: any): { name: string; value: string } | undefined {
+  const walk = (opts: any[] | undefined): any => {
+    for (const o of opts ?? []) {
+      if (o.focused) return o;
+      const nested = walk(o.options);
+      if (nested) return nested;
+    }
+    return undefined;
+  };
+  const f = walk(i.data?.options);
+  return f ? { name: f.name, value: String(f.value ?? "") } : undefined;
+}
+
+export function autocompleteResult(choices: { name: string; value: string }[]) {
+  return json({
+    type: InteractionResponseType.ApplicationCommandAutocompleteResult,
+    data: { choices: choices.slice(0, 25) },
+  });
+}
+
+/** name -> slug id, e.g. "Cleaning Kit" -> "cleaning_kit" */
+export const slug = (s: string) =>
+  s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+
 /** Officer = holds the configured officer role, or (fallback) Manage Server. */
 export function isOfficer(i: any, config: Config): boolean {
   const member = i.member;

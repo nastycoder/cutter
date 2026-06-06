@@ -17,6 +17,9 @@ import {
   option,
   guildId,
   isOfficer,
+  focusedOption,
+  autocompleteResult,
+  slug,
 } from "./discord";
 
 interface DiscordSecret {
@@ -58,6 +61,10 @@ export async function handler(event: ProxyEvent) {
 
   if (interaction.type === InteractionType.Ping) {
     return json({ type: InteractionResponseType.Pong });
+  }
+
+  if (interaction.type === InteractionType.ApplicationCommandAutocomplete) {
+    return handleAutocomplete(interaction);
   }
 
   if (interaction.type === InteractionType.ApplicationCommand) {
@@ -149,34 +156,61 @@ async function handleConfig(i: any) {
   );
 }
 
-const titleCase = (id: string) =>
-  id.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+async function handleAutocomplete(i: any) {
+  const focused = focusedOption(i);
+  if (focused?.name === "item") {
+    const q = focused.value.toLowerCase();
+    const items = await store.listCatalog(guildId(i));
+    const choices = items
+      .filter((it) => it.name.toLowerCase().includes(q) || it.id.includes(q))
+      .map((it) => ({
+        name: `${it.name} — $${it.value}${it.source ? ` (${it.source})` : ""}`,
+        value: it.id,
+      }));
+    return autocompleteResult(choices);
+  }
+  return autocompleteResult([]);
+}
 
 async function handleCatalog(i: any) {
   const gid = guildId(i);
   const config = await store.getConfig(gid);
   const sub = subcommand(i);
 
+  if (sub === "add") {
+    if (!isOfficer(i, config)) return reply("⛔ Officers only.");
+    const name = option<string>(i, "name")!.trim();
+    const id = slug(name);
+    if (!id) return reply("⚠️ Give the item a name.");
+    if (await store.getCatalogItem(gid, id)) {
+      return reply(`⚠️ **${name}** already exists — use \`/catalog set\` to change its price.`);
+    }
+    const value = option<number>(i, "value")!;
+    const source = option<"farmed" | "bought">(i, "source") ?? "bought";
+    const kind = (option<string>(i, "kind") as any) ?? "base";
+    await store.putCatalogItem(gid, { id, name, kind, value, source });
+    return reply(`✅ Added **${name}** = $${value} (${source}, ${kind}).`);
+  }
+
   if (sub === "set") {
     if (!isOfficer(i, config)) return reply("⛔ Officers only.");
-    const id = option<string>(i, "item")!.trim();
-    const value = option<number>(i, "value")!;
+    const id = option<string>(i, "item")!;
+    const item = await store.getCatalogItem(gid, id);
+    if (!item) return reply("⚠️ Pick an existing item from the list (or use `/catalog add`).");
+    item.value = option<number>(i, "value")!;
     const source = option<"farmed" | "bought">(i, "source");
-    const existing = await store.getCatalogItem(gid, id);
-    if (existing) {
-      existing.value = value;
-      if (source) existing.source = source;
-      await store.putCatalogItem(gid, existing);
-      return reply(`✅ **${existing.name}** → $${value}${source ? ` (${source})` : ""}.`);
-    }
-    await store.putCatalogItem(gid, {
-      id,
-      name: titleCase(id),
-      kind: "base",
-      value,
-      source: source ?? "bought",
-    });
-    return reply(`✅ Added **${titleCase(id)}** = $${value} (${source ?? "bought"}).`);
+    if (source) item.source = source;
+    await store.putCatalogItem(gid, item);
+    return reply(`✅ **${item.name}** → $${item.value}${source ? ` (${source})` : ""}.`);
+  }
+
+  if (sub === "remove") {
+    if (!isOfficer(i, config)) return reply("⛔ Officers only.");
+    const id = option<string>(i, "item")!;
+    const item = await store.getCatalogItem(gid, id);
+    if (!item) return reply("⚠️ Pick an existing item from the list.");
+    await store.deleteCatalogItem(gid, id);
+    return reply(`🗑️ Removed **${item.name}**.`);
   }
 
   // list

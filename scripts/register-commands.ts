@@ -57,27 +57,65 @@ const commands = [
   },
   {
     name: "catalog",
-    description: "View or edit item prices",
+    description: "Manage catalog items & prices",
     type: 1,
     options: [
       { type: 1, name: "list", description: "List catalog items & values" },
       {
         type: 1,
-        name: "set",
-        description: "Set an item's value (officers only)",
+        name: "add",
+        description: "Add a new item (officers only)",
         options: [
-          { type: 3, name: "item", description: "Item id (e.g. poppy)", required: true },
+          { type: 3, name: "name", description: "Item name (e.g. Syringe)", required: true },
           { type: 10, name: "value", description: "Catalog value ($)", required: true },
           {
             type: 3,
             name: "source",
-            description: "For new items: farmed or bought",
+            description: "farmed or bought (default bought)",
             required: false,
             choices: [
               { name: "farmed", value: "farmed" },
               { name: "bought", value: "bought" },
             ],
           },
+          {
+            type: 3,
+            name: "kind",
+            description: "base / intermediate / final (default base)",
+            required: false,
+            choices: [
+              { name: "base", value: "base" },
+              { name: "intermediate", value: "intermediate" },
+              { name: "final", value: "final" },
+            ],
+          },
+        ],
+      },
+      {
+        type: 1,
+        name: "set",
+        description: "Update an existing item's price (officers only)",
+        options: [
+          { type: 3, name: "item", description: "Pick an item", required: true, autocomplete: true },
+          { type: 10, name: "value", description: "New value ($)", required: true },
+          {
+            type: 3,
+            name: "source",
+            description: "Change source (optional)",
+            required: false,
+            choices: [
+              { name: "farmed", value: "farmed" },
+              { name: "bought", value: "bought" },
+            ],
+          },
+        ],
+      },
+      {
+        type: 1,
+        name: "remove",
+        description: "Delete an item (officers only)",
+        options: [
+          { type: 3, name: "item", description: "Pick an item", required: true, autocomplete: true },
         ],
       },
     ],
