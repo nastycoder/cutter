@@ -115,6 +115,27 @@ const commands = [
         description: "Remove a role mapping (officers only)",
         options: [{ type: 8, name: "role", description: "Role", required: true }],
       },
+      {
+        type: 1,
+        name: "weights",
+        description: "Set a level's multiplier / weight (officers only)",
+        options: [
+          {
+            type: 4,
+            name: "level",
+            description: "Rank level (I = top)",
+            required: true,
+            choices: [
+              { name: "I — Leadership", value: 1 },
+              { name: "II — Consigliere", value: 2 },
+              { name: "III — Capos", value: 3 },
+              { name: "IV — Enforcers", value: 4 },
+              { name: "V — Associates", value: 5 },
+            ],
+          },
+          { type: 10, name: "weight", description: "Multiplier, e.g. 5", required: true },
+        ],
+      },
     ],
   },
 ];

@@ -215,6 +215,18 @@ async function handleRank(i: any) {
     await store.deleteRank(gid, roleId);
     return reply(`✅ Removed mapping for <@&${roleId}>.`);
   }
+  if (sub === "weights") {
+    if (!isOfficer(i, config)) return reply("⛔ Officers only.");
+    const level = option<number>(i, "level")!;
+    const weight = option<number>(i, "weight")!;
+    config.rankMultipliers[level] = weight;
+    await store.putConfig(gid, config);
+    const all = Object.entries(config.rankMultipliers)
+      .sort((a, b) => Number(a[0]) - Number(b[0]))
+      .map(([, w]) => `${w}×`)
+      .join(" / ");
+    return reply(`✅ Level ${level} weight → **${weight}×**.  Now (I→V): **${all}**`);
+  }
 
   // list
   const ranks = await store.listRanks(gid);
