@@ -9,6 +9,7 @@ import { Construct } from "constructs";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import * as logs from "aws-cdk-lib/aws-logs";
+import * as iam from "aws-cdk-lib/aws-iam";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Runtime } from "aws-cdk-lib/aws-lambda";
 import * as apigw from "aws-cdk-lib/aws-apigatewayv2";
@@ -47,6 +48,7 @@ export class CutterStack extends Stack {
     });
 
     const fn = new NodejsFunction(this, "Interactions", {
+      functionName: "cutter-interactions",
       entry: path.join(__dirname, "../../bot/src/handler.ts"),
       handler: "handler",
       runtime: Runtime.NODEJS_20_X,
@@ -61,7 +63,14 @@ export class CutterStack extends Stack {
     });
     table.grantReadWriteData(fn);
     secret.grantRead(fn);
-    fn.grantInvoke(fn); // self-invoke for deferred (async) command handling
+    // self-invoke for deferred (async) command handling — scoped to the fixed
+    // name as a string ARN to avoid a circular dependency on the function resource
+    fn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["lambda:InvokeFunction"],
+        resources: [`arn:aws:lambda:${this.region}:${this.account}:function:cutter-interactions`],
+      })
+    );
 
     // ---- HTTP API: POST /interactions ----
     const api = new apigw.HttpApi(this, "Api", { apiName: "cutter" });
