@@ -7,8 +7,54 @@ import {
 // leave unset for global registration (can take up to ~1h to propagate).
 const GUILD_ID = process.env.GUILD_ID;
 
+// Discord ApplicationCommandOptionType: 1=Subcommand 3=String 4=Integer 8=Role 10=Number
 const commands = [
   { name: "ping", description: "Check that Cutter is alive", type: 1 },
+  {
+    name: "setup",
+    description: "Seed defaults and set the officer role (Manage Server)",
+    type: 1,
+    options: [
+      {
+        type: 8,
+        name: "officer",
+        description: "Role that can run privileged commands (e.g. Capo+)",
+        required: true,
+      },
+    ],
+  },
+  {
+    name: "config",
+    description: "View or change the economy dials",
+    type: 1,
+    options: [
+      { type: 1, name: "view", description: "Show the current dials" },
+      {
+        type: 1,
+        name: "set",
+        description: "Change a dial (officers only)",
+        options: [
+          {
+            type: 3,
+            name: "dial",
+            description: "Which dial to change",
+            required: true,
+            choices: [
+              { name: "Labor rate ($/unit)", value: "labor-rate" },
+              { name: "Work split (%)", value: "work-split" },
+              { name: "Sell commission (%)", value: "commission" },
+            ],
+          },
+          {
+            type: 10,
+            name: "value",
+            description: "New value",
+            required: true,
+          },
+        ],
+      },
+    ],
+  },
 ];
 
 async function main() {
