@@ -1,0 +1,10 @@
+{
+  "app": "npx ts-node --prefer-ts-exts packages/infra/bin/cutter.ts",
+  "watch": {
+    "include": ["packages/**"],
+    "exclude": ["**/dist/**", "**/cdk.out/**", "node_modules"]
+  },
+  "context": {
+    "@aws-cdk/core:newStyleStackSynthesis": true
+  }
+}

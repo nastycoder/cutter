@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Midnight Mafia — Rank Cuts</title>
+<style>
+  @font-face{font-family:'Anton';src:url('file:///Users/uriah/Library/Fonts/Anton-Regular.ttf')}
+  @font-face{font-family:'Oswald';src:url('file:///Users/uriah/Library/Fonts/Oswald-var.ttf');font-weight:200 700}
+  @font-face{font-family:'Teko';src:url('file:///Users/uriah/Library/Fonts/Teko-var.ttf');font-weight:300 700}
+  @font-face{font-family:'Barlow Condensed';src:url('file:///Users/uriah/Library/Fonts/BarlowCondensed-SemiBold.ttf');font-weight:600}
+  @font-face{font-family:'Barlow Condensed';src:url('file:///Users/uriah/Library/Fonts/BarlowCondensed-Medium.ttf');font-weight:500}
+
+  @page{ size:1080px 1320px; margin:0; }
+  *{ margin:0; padding:0; box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  :root{
+    --bg:#09080d; --gold:#e8b84b; --gold-br:#f6d680; --gold-dp:#a87f28;
+    --white:#f2efe7; --cream:#d8d0c2; --muted:#8c8576; --line:#241f2c; --panel:#13101a;
+  }
+  body{ width:1080px; height:1320px; position:relative; overflow:hidden;
+    font-family:'Barlow Condensed','Oswald',sans-serif; color:var(--cream);
+    background:
+      radial-gradient(820px 520px at 50% -6%, rgba(232,184,75,.16), transparent 60%),
+      radial-gradient(900px 560px at 50% 112%, rgba(232,184,75,.08), transparent 55%),
+      linear-gradient(180deg,#0b0810,#09080d); }
+  .grain{ position:absolute; inset:0; z-index:5; pointer-events:none; opacity:.05; mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"); }
+  .wrap{ position:relative; z-index:10; padding:60px 64px; height:100%; display:flex; flex-direction:column; }
+
+  .top{ display:flex; align-items:center; gap:20px; padding-bottom:20px; border-bottom:1px solid var(--line); }
+  .em{ width:84px; height:84px; flex:none; }
+  .top .org{ font-family:'Barlow Condensed'; font-weight:600; letter-spacing:.3em; font-size:16px; color:var(--gold-br); }
+  .top .org .mu{ color:var(--muted); }
+  h1{ font-family:'Anton'; font-size:74px; line-height:.86; color:var(--white); letter-spacing:.01em; margin-top:2px; }
+  h1 b{ color:var(--gold-br); }
+
+  .intro{ margin-top:24px; font-size:19px; line-height:1.5; color:#c8c0b1; }
+  .intro b{ color:var(--gold-br); font-weight:600; }
+  .split-line{ display:flex; gap:14px; margin-top:18px; }
+  .split-line .pill{ flex:1; text-align:center; border:1px solid var(--line); border-radius:9px; padding:12px;
+    background:linear-gradient(180deg,rgba(40,30,20,.6),rgba(18,13,22,.7)); }
+  .split-line .pill .p{ font-family:'Teko'; font-weight:600; font-size:46px; line-height:.8; }
+  .split-line .pill.work .p{ color:var(--cream); } .split-line .pill.rank .p{ color:var(--gold-br); }
+  .split-line .pill .c{ font-family:'Barlow Condensed'; font-weight:600; letter-spacing:.1em; font-size:14px; color:var(--muted); margin-top:5px; }
+  .split-line .pill.rank{ border-color:var(--gold-dp); box-shadow:0 0 0 1px rgba(232,184,75,.15), 0 8px 22px rgba(0,0,0,.4); }
+
+  .sec{ margin-top:30px; display:flex; align-items:center; gap:10px; }
+  .sec .lbl{ font-family:'Anton'; font-size:24px; color:#15100a; letter-spacing:.03em;
+    background:linear-gradient(90deg,var(--gold-br),var(--gold-dp)); padding:6px 20px 4px 14px;
+    clip-path:polygon(0 0,100% 0,calc(100% - 15px) 100%,0 100%); }
+  .sec .ln{ flex:1; height:2px; background:linear-gradient(90deg,var(--gold),transparent); }
+
+  table{ width:100%; border-collapse:collapse; margin-top:16px; }
+  th{ font-family:'Barlow Condensed'; font-weight:600; letter-spacing:.1em; text-transform:uppercase;
+    font-size:13px; color:var(--gold-dp); text-align:left; padding:8px 12px; border-bottom:2px solid var(--gold-dp); }
+  th.r,td.r{ text-align:right; } th.c,td.c{ text-align:center; }
+  td{ padding:13px 12px; border-bottom:1px solid var(--line); vertical-align:middle; }
+  tr:last-child td{ border-bottom:none; }
+  .lvl{ font-family:'Anton'; font-size:34px; color:var(--gold-br); line-height:.8; width:62px; }
+  .tier{ font-family:'Anton'; font-size:21px; color:var(--white); letter-spacing:.01em; }
+  .titles{ font-family:'Barlow Condensed'; font-weight:500; font-size:15px; color:var(--muted); margin-top:2px; }
+  .wt{ font-family:'Teko'; font-weight:600; font-size:48px; color:var(--white); line-height:.7; }
+  .share{ font-family:'Teko'; font-weight:600; font-size:48px; color:var(--gold-br); line-height:.7;
+    text-shadow:0 2px 14px rgba(236,187,61,.25); }
+
+  .rule{ margin-top:24px; text-align:center; font-family:'Anton'; font-size:28px; color:var(--cream); letter-spacing:.01em; }
+  .rule b{ color:var(--gold-br); }
+  .note{ margin-top:auto; padding-top:22px; border-top:1px solid var(--line);
+    font-family:'Barlow Condensed'; font-weight:500; font-size:14.5px; line-height:1.5; color:var(--muted); }
+  .note b{ color:var(--gold-dp); }
+  .sig{ text-align:center; margin-top:14px; font-family:'Barlow Condensed'; font-weight:600;
+    letter-spacing:.3em; font-size:12px; color:var(--muted); }
+  .sig b{ color:var(--gold); }
+</style>
+</head>
+<body>
+  <div class="grain"></div>
+  <div class="wrap">
+
+    <div class="top">
+      <svg class="em" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="60" cy="60" r="56" fill="#100d18" stroke="#e8b84b" stroke-width="2.5"/>
+        <circle cx="60" cy="60" r="47" fill="none" stroke="#a8843a" stroke-width="1.6" opacity="0.85"/>
+        <text font-family="Anton" font-size="40" fill="#f2efe7" text-anchor="middle" x="60" y="74">MM</text>
+      </svg>
+      <div>
+        <div class="org">MIDNIGHT MAFIA <span class="mu">· CUTTER</span></div>
+        <h1>RANK <b>CUTS</b></h1>
+      </div>
+    </div>
+
+    <p class="intro">Every job's profit splits two ways: <b>70% rewards the work</b> you put in, and
+      <b>30% is the rank pool</b> — divided by your level in the chain, read straight from your Discord role.
+      Here's how that rank pool breaks down.</p>
+
+    <div class="split-line">
+      <div class="pill work"><div class="p">70%</div><div class="c">WORK SHARE — BY CONTRIBUTION</div></div>
+      <div class="pill rank"><div class="p">30%</div><div class="c">RANK POOL — BY LEVEL ↓</div></div>
+    </div>
+
+    <div class="sec"><div class="lbl">THE RANK POOL, BY LEVEL</div><div class="ln"></div></div>
+    <table>
+      <tr><th>Lvl</th><th>Tier</th><th class="c">Weight</th><th class="r">Share of pool*</th></tr>
+      <tr>
+        <td class="lvl">I</td>
+        <td><div class="tier">LEADERSHIP</div><div class="titles">Don · Underboss</div></td>
+        <td class="c"><span class="wt">5×</span></td><td class="r"><span class="share">33%</span></td>
+      </tr>
+      <tr>
+        <td class="lvl">II</td>
+        <td><div class="tier">CONSIGLIERE</div><div class="titles">Captain · Soldier · Warlord</div></td>
+        <td class="c"><span class="wt">4×</span></td><td class="r"><span class="share">27%</span></td>
+      </tr>
+      <tr>
+        <td class="lvl">III</td>
+        <td><div class="tier">CAPOS</div><div class="titles">Ambassador · Corner Boss · Street Soldier · Dealer · Supplier</div></td>
+        <td class="c"><span class="wt">3×</span></td><td class="r"><span class="share">20%</span></td>
+      </tr>
+      <tr>
+        <td class="lvl">IV</td>
+        <td><div class="tier">ENFORCERS</div><div class="titles">Hittaz · Goon · Hustler</div></td>
+        <td class="c"><span class="wt">2×</span></td><td class="r"><span class="share">13%</span></td>
+      </tr>
+      <tr>
+        <td class="lvl">V</td>
+        <td><div class="tier">ASSOCIATES</div><div class="titles">Runners · Lookouts</div></td>
+        <td class="c"><span class="wt">1×</span></td><td class="r"><span class="share">7%</span></td>
+      </tr>
+    </table>
+
+    <div class="rule">For every <b>$1</b> of the rank pool an Associate earns, a Don earns <b>$5</b>.</div>
+
+    <div class="note">
+      <b>* About the percentages:</b> shares shown assume one member of each level on the run. Your real slice =
+      <b>your weight ÷ the total weight of everyone on that job</b>, so it shifts with who's on hand — fewer top
+      ranks present means a bigger slice for everyone below. The 70 / 30 split and these weights are crew-configurable.
+    </div>
+    <div class="sig">CUTTER · MIDNIGHT MAFIA · <b>RANK REFERENCE</b></div>
+
+  </div>
+</body>
+</html>

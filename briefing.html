@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cutter — Operations Briefing</title>
+<style>
+  @font-face{font-family:'Anton';src:url('file:///Users/uriah/Library/Fonts/Anton-Regular.ttf')}
+  @font-face{font-family:'Oswald';src:url('file:///Users/uriah/Library/Fonts/Oswald-var.ttf');font-weight:200 700}
+  @font-face{font-family:'Teko';src:url('file:///Users/uriah/Library/Fonts/Teko-var.ttf');font-weight:300 700}
+  @font-face{font-family:'Barlow Condensed';src:url('file:///Users/uriah/Library/Fonts/BarlowCondensed-SemiBold.ttf');font-weight:600}
+  @font-face{font-family:'Barlow Condensed';src:url('file:///Users/uriah/Library/Fonts/BarlowCondensed-Medium.ttf');font-weight:500}
+
+  @page{ size:Letter; margin:0; }
+  *{ margin:0; padding:0; box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+
+  :root{
+    --bg:#09080d; --gold:#e8b84b; --gold-br:#f6d680; --gold-dp:#a87f28;
+    --white:#f2efe7; --cream:#d8d0c2; --red:#d6452f; --green:#5fcf82;
+    --muted:#8c8576; --line:#241f2c; --panel:#13101a;
+  }
+  body{ font-family:'Barlow Condensed','Oswald',sans-serif; color:var(--cream); background:var(--bg); }
+
+  .page{ width:8.5in; height:11in; position:relative; overflow:hidden; padding:0.62in 0.66in 0.5in;
+    background:
+      radial-gradient(700px 420px at 50% -4%, rgba(232,184,75,.12), transparent 60%),
+      radial-gradient(800px 500px at 50% 110%, rgba(232,184,75,.07), transparent 55%),
+      linear-gradient(180deg,#0b0810,#09080d); display:flex; flex-direction:column; }
+  .page:not(:last-child){ break-after:page; }
+  .grain{ position:absolute; inset:0; z-index:5; pointer-events:none; opacity:.045; mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"); }
+  .inner{ position:relative; z-index:10; display:flex; flex-direction:column; height:100%; }
+
+  /* masthead */
+  .mast{ display:flex; align-items:center; gap:14px; padding-bottom:13px; border-bottom:1px solid var(--line); }
+  .mast .em{ width:56px; height:56px; flex:none; }
+  .mast .ttl{ font-family:'Anton'; font-size:23px; letter-spacing:.02em; color:var(--white); line-height:.95; }
+  .mast .ttl b{ color:var(--gold-br); }
+  .mast .sub{ font-family:'Barlow Condensed'; font-weight:600; letter-spacing:.26em; font-size:11px; color:var(--muted); margin-top:3px; }
+  .mast .pg{ margin-left:auto; text-align:right; font-family:'Barlow Condensed'; font-weight:600; letter-spacing:.2em; font-size:10.5px; color:var(--gold-dp); }
+  .mast .pg b{ display:block; font-family:'Teko'; font-weight:600; font-size:30px; letter-spacing:0; color:var(--gold-br); line-height:.8; }
+
+  .lead{ font-size:14px; color:#c2bbac; line-height:1.5; margin:14px 0 4px; }
+  .lead b{ color:var(--gold-br); font-weight:600; }
+
+  /* section banner */
+  .sec{ margin-top:18px; display:flex; align-items:center; gap:10px; }
+  .sec .lbl{ font-family:'Anton'; font-size:19px; letter-spacing:.03em; color:#15100a;
+    background:linear-gradient(90deg,var(--gold-br),var(--gold-dp)); padding:5px 16px 3px 12px;
+    clip-path:polygon(0 0,100% 0,calc(100% - 13px) 100%,0 100%); }
+  .sec .ln{ flex:1; height:2px; background:linear-gradient(90deg,var(--gold),transparent); }
+  .hint{ font-family:'Barlow Condensed'; font-weight:500; font-size:11px; letter-spacing:.16em; color:var(--muted); margin-left:auto; }
+
+  table{ width:100%; border-collapse:collapse; margin-top:11px; }
+  th{ font-family:'Barlow Condensed'; font-weight:600; letter-spacing:.1em; text-transform:uppercase;
+    font-size:10.5px; color:var(--gold-dp); text-align:left; padding:6px 9px; border-bottom:1.5px solid var(--gold-dp); }
+  th.r,td.r{ text-align:right; }
+  td{ font-size:13px; color:var(--cream); padding:6px 9px; border-bottom:1px solid var(--line); line-height:1.2; }
+  tr:last-child td{ border-bottom:none; }
+  .num{ font-family:'Oswald'; font-weight:500; font-variant-numeric:tabular-nums; }
+  .step{ font-family:'Anton'; font-size:12px; color:var(--gold-br); }
+  .tag{ font-family:'Barlow Condensed'; font-weight:600; font-size:10px; letter-spacing:.08em; padding:1.5px 7px; border-radius:4px; }
+  .tag.farm{ color:#8fd6a0; background:rgba(95,207,130,.12); border:1px solid rgba(95,207,130,.3); }
+  .tag.buy{ color:var(--gold-br); background:rgba(232,184,75,.12); border:1px solid rgba(232,184,75,.3); }
+  .tag.risk{ color:var(--red); background:rgba(214,69,47,.12); border:1px solid rgba(214,69,47,.32); }
+  .g{ color:var(--gold-br); } .rd{ color:var(--red); } .gr{ color:var(--green); } .mu{ color:var(--muted); }
+  .total td{ border-top:1.5px solid var(--gold-dp); border-bottom:none; font-family:'Oswald'; font-weight:600; color:var(--white); padding-top:8px; }
+  .total td.big{ font-family:'Teko'; font-weight:600; font-size:22px; color:var(--gold-br); line-height:.7; }
+
+  /* panels & two-col */
+  .cols{ display:flex; gap:16px; }
+  .cols > div{ flex:1; }
+  .panel{ background:var(--panel); border:1px solid var(--line); border-radius:7px; padding:11px 13px; margin-top:11px; }
+  .panel h4{ font-family:'Barlow Condensed'; font-weight:600; letter-spacing:.12em; font-size:11px; color:var(--gold-dp);
+    text-transform:uppercase; margin-bottom:7px; }
+
+  /* waterfall */
+  .fall{ margin-top:11px; }
+  .fall .r{ display:flex; justify-content:space-between; font-size:13.5px; padding:5px 2px; border-bottom:1px dashed var(--line); }
+  .fall .r .v{ font-family:'Oswald'; font-weight:500; font-variant-numeric:tabular-nums; }
+  .fall .r.minus .v{ color:var(--red); } .fall .r.plus .v{ color:var(--green); }
+  .fall .r.out{ border-bottom:none; border-top:1.5px solid var(--gold-dp); margin-top:3px; padding-top:8px; }
+  .fall .r.out .l{ font-family:'Anton'; font-size:15px; color:var(--white); }
+  .fall .r.out .v{ font-family:'Teko'; font-weight:600; font-size:24px; color:var(--gold-br); }
+  .split{ text-align:right; font-family:'Barlow Condensed'; font-weight:600; font-size:12px; color:var(--muted); margin-top:4px; }
+  .split b{ color:var(--gold-br); }
+
+  .callout{ margin-top:13px; border-left:3px solid var(--gold); background:rgba(232,184,75,.06);
+    padding:9px 14px; font-size:12.5px; line-height:1.5; color:#c8c0b1; border-radius:0 6px 6px 0; }
+  .callout b{ color:var(--gold-br); }
+  .callout .h{ font-family:'Anton'; font-size:13px; color:var(--gold-br); letter-spacing:.02em; display:block; margin-bottom:3px; }
+
+  .foot{ margin-top:auto; padding-top:12px; border-top:1px solid var(--line); display:flex; justify-content:space-between;
+    font-family:'Barlow Condensed'; font-weight:600; letter-spacing:.26em; font-size:9.5px; color:var(--muted); }
+  .foot b{ color:var(--gold-dp); }
+</style>
+</head>
+<body>
+
+<!-- ============ PAGE 1 ============ -->
+<section class="page">
+  <div class="grain"></div>
+  <div class="inner">
+    <div class="mast">
+      <svg class="em" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="60" cy="60" r="56" fill="#100d18" stroke="#e8b84b" stroke-width="2.5"/>
+        <circle cx="60" cy="60" r="47" fill="none" stroke="#a8843a" stroke-width="1.6" opacity="0.85"/>
+        <text font-family="Anton" font-size="40" fill="#f2efe7" text-anchor="middle" x="60" y="74">MM</text>
+      </svg>
+      <div>
+        <div class="ttl"><b>CUTTER</b> — OPERATIONS BRIEFING</div>
+        <div class="sub">MIDNIGHT MAFIA · HOW THE CUT IS CALCULATED</div>
+      </div>
+      <div class="pg">PAGE<b>01</b>THE SYSTEM</div>
+    </div>
+
+    <p class="lead">Cutter logs every contribution to an operation — what was farmed, funded, cooked, and moved — then
+      settles the haul the <b>same fair way every time</b>. This brief walks one full run end to end, then shows
+      every dial you can turn to fit the crew's economy.</p>
+
+    <div class="sec"><div class="lbl">THE CHAIN</div><div class="ln"></div><div class="hint">POPPY → HONEY · 4 STEPS</div></div>
+    <table>
+      <tr><th>Step</th><th>Inputs</th><th>Output</th><th class="r">Note</th></tr>
+      <tr><td><span class="step">1 · REFINE</span></td><td class="num">5 poppy + 2 acetone</td><td class="num g">4 heroin powder</td><td class="r mu">safe</td></tr>
+      <tr><td><span class="step">2 · CUT</span></td><td class="num">2 baking soda + 2 powder</td><td class="num g">4 cut heroin</td><td class="r mu">safe</td></tr>
+      <tr><td><span class="step">3 · BOTTLE</span></td><td class="num">4 vial + 4 cut heroin</td><td class="num g">4 vial heroin</td><td class="r"><span class="tag risk">SKILL CHECK</span></td></tr>
+      <tr><td><span class="step">4 · DOSE</span></td><td class="num">1 vial heroin + 1 syringe</td><td class="num g">2 honey</td><td class="r"><span class="tag risk">SKILL CHECK</span></td></tr>
+    </table>
+
+    <div class="sec"><div class="lbl">THE PRICE LIST</div><div class="ln"></div><div class="hint">FIXED COST-BASIS · CONFIGURABLE</div></div>
+    <div class="cols">
+      <div>
+        <table>
+          <tr><th>Raw material</th><th>Source</th><th class="r">Value</th></tr>
+          <tr><td>Poppy</td><td><span class="tag farm">FARMED</span></td><td class="r num">$20</td></tr>
+          <tr><td>Acetone</td><td><span class="tag farm">FARMED</span></td><td class="r num">$30</td></tr>
+          <tr><td>Baking soda</td><td><span class="tag buy">BOUGHT</span></td><td class="r num">$50</td></tr>
+          <tr><td>Vial</td><td><span class="tag buy">BOUGHT</span></td><td class="r num">$50</td></tr>
+          <tr><td>Syringe</td><td><span class="tag buy">BOUGHT</span></td><td class="r num">$50</td></tr>
+          <tr><td>Cleaning kit</td><td><span class="tag buy">BOUGHT</span></td><td class="r num">$50</td></tr>
+        </table>
+      </div>
+      <div>
+        <table>
+          <tr><th>Built product</th><th class="r">Cost basis</th></tr>
+          <tr><td>Heroin powder</td><td class="r num">$40</td></tr>
+          <tr><td>Cut heroin</td><td class="r num">$45</td></tr>
+          <tr><td>Vial heroin</td><td class="r num">$95</td></tr>
+          <tr><td class="mu" style="font-size:11px">Honey <span style="font-size:10px">(reference)</span></td><td class="r num mu">~$125</td></tr>
+        </table>
+        <div class="panel" style="margin-top:13px">
+          <h4>Why fixed values?</h4>
+          <div style="font-size:12px;line-height:1.5;color:#bdb6a7">Catalog prices bake in farm labor &amp; black-market cost. Whatever a member actually pays a player to skip the grind is their own deal — <b class="g">Cutter's math never moves.</b> Built products are valued bottom-up from their inputs, never the street price.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout">
+      <span class="h">FOUR WAYS TO GET PAID</span>
+      <b>① Capital home first</b> — fronted materials &amp; cash reimbursed before any profit. &nbsp;<b>② Work share (70%)</b> — farm, fund, or cook; paid on what you produce. &nbsp;<b>③ Rank share (30%)</b> — your level, auto from Discord. &nbsp;<b>④ Selling commission</b> — hazard pay for moving product.
+    </div>
+
+    <div class="foot"><span>CUTTER · OPERATIONS BRIEFING</span><span>FOR THE <b>FAMILY</b> ONLY</span></div>
+  </div>
+</section>
+
+<!-- ============ PAGE 2 ============ -->
+<section class="page">
+  <div class="grain"></div>
+  <div class="inner">
+    <div class="mast">
+      <svg class="em" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="60" cy="60" r="56" fill="#100d18" stroke="#e8b84b" stroke-width="2.5"/>
+        <circle cx="60" cy="60" r="47" fill="none" stroke="#a8843a" stroke-width="1.6" opacity="0.85"/>
+        <text font-family="Anton" font-size="40" fill="#f2efe7" text-anchor="middle" x="60" y="74">MM</text>
+      </svg>
+      <div>
+        <div class="ttl"><b>A WORKED RUN</b> — 600 POPPY</div>
+        <div class="sub">ONE BATCH · FIVE HANDS · SETTLED TO THE DOLLAR</div>
+      </div>
+      <div class="pg">PAGE<b>02</b>THE RUN</div>
+    </div>
+
+    <div class="sec"><div class="lbl">PRODUCTION</div><div class="ln"></div><div class="hint">SKILL CHECKS APPLIED</div></div>
+    <table>
+      <tr><th>Step</th><th>Inputs</th><th>Output</th><th class="r">Botched</th></tr>
+      <tr><td><span class="step">REFINE</span></td><td class="num">600 poppy + 240 acetone</td><td class="num g">480 powder</td><td class="r mu">—</td></tr>
+      <tr><td><span class="step">CUT</span></td><td class="num">480 powder + 480 baking</td><td class="num g">960 cut heroin</td><td class="r mu">—</td></tr>
+      <tr><td><span class="step">BOTTLE</span></td><td class="num">960 cut + 960 vial</td><td class="num g">900 vial heroin</td><td class="r rd num">60</td></tr>
+      <tr><td><span class="step">DOSE</span></td><td class="num">900 vial heroin + 900 syringe</td><td class="num g">1,700 honey</td><td class="r rd num">50</td></tr>
+    </table>
+
+    <div class="cols">
+      <div>
+        <div class="sec"><div class="lbl" style="font-size:16px">MATERIALS</div><div class="ln"></div></div>
+        <table>
+          <tr><th>Item</th><th class="r">Qty</th><th class="r">Value</th></tr>
+          <tr><td>Poppy</td><td class="r num">600</td><td class="r num">$12,000</td></tr>
+          <tr><td>Acetone</td><td class="r num">240</td><td class="r num">$7,200</td></tr>
+          <tr><td>Baking soda</td><td class="r num">480</td><td class="r num">$24,000</td></tr>
+          <tr><td>Vial</td><td class="r num">960</td><td class="r num">$48,000</td></tr>
+          <tr><td>Syringe</td><td class="r num">900</td><td class="r num">$45,000</td></tr>
+          <tr><td>Cleaning kit</td><td class="r num">110</td><td class="r num">$5,500</td></tr>
+          <tr class="total"><td>Total</td><td></td><td class="r">$141,700</td></tr>
+        </table>
+      </div>
+      <div>
+        <div class="sec"><div class="lbl" style="font-size:16px">SALES LEDGER</div><div class="ln"></div></div>
+        <table>
+          <tr><th>Qty</th><th class="r">Price</th><th class="r">Cash</th></tr>
+          <tr><td class="num">700 honey</td><td class="r num">$140</td><td class="r num">$98,000</td></tr>
+          <tr><td class="num">700 honey</td><td class="r num">$125</td><td class="r num">$87,500</td></tr>
+          <tr><td class="num">300 honey</td><td class="r num">$115</td><td class="r num">$34,500</td></tr>
+          <tr class="total"><td>1,700</td><td class="r mu" style="font-size:11px">avg $129</td><td class="r">$220,000</td></tr>
+        </table>
+        <div class="panel" style="margin-top:11px">
+          <div style="font-size:11.5px;line-height:1.45;color:#bdb6a7">Revenue is the <b class="g">real cash booked</b>, not units × average. The $125 only powers the pre-sale projection.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec"><div class="lbl">THE SETTLEMENT</div><div class="ln"></div><div class="hint">$220,000 · TO THE DOLLAR</div></div>
+    <div class="cols" style="align-items:flex-start">
+      <div style="flex:0.9">
+        <div class="fall">
+          <div class="r"><span class="l">Actual revenue</span><span class="v">$220,000</span></div>
+          <div class="r minus"><span class="l mu">− Materials reimbursed</span><span class="v">−$141,700</span></div>
+          <div class="r minus"><span class="l mu">− Selling commission (8%)</span><span class="v">−$17,600</span></div>
+          <div class="r out"><span class="l">Distributable</span><span class="v">$60,700</span></div>
+        </div>
+        <div class="split">WORK <b>70% · $42,490</b> &nbsp;|&nbsp; RANK <b>30% · $18,210</b></div>
+      </div>
+      <div style="flex:1.1">
+        <table>
+          <tr><th>Member</th><th>Rank</th><th class="r">Cap. back</th><th class="r">Earned</th><th class="r">Take-home</th></tr>
+          <tr><td>Marco</td><td class="mu">Don · I</td><td class="r num mu">$93,000</td><td class="r num gr">$21,972</td><td class="r num g">$114,972</td></tr>
+          <tr><td>Rico</td><td class="mu">Dealer · III</td><td class="r num mu">$29,500</td><td class="r num gr">$26,179</td><td class="r num g">$55,679</td></tr>
+          <tr><td>Vinny</td><td class="mu">Supplier · III</td><td class="r num mu">$19,200</td><td class="r num gr">$6,776</td><td class="r num g">$25,976</td></tr>
+          <tr><td>Tony</td><td class="mu">Goon · IV</td><td class="r num mu">—</td><td class="r num gr">$12,518</td><td class="r num g">$12,518</td></tr>
+          <tr><td>Lou</td><td class="mu">Soldier · III</td><td class="r num mu">—</td><td class="r num gr">$10,855</td><td class="r num g">$10,855</td></tr>
+          <tr class="total"><td>Haul</td><td></td><td class="r">$141,700</td><td class="r">$78,300</td><td class="r big">$220,000</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="callout">
+      <span class="h">CAPITAL ≠ EARNINGS</span>
+      Marco's <b>$114,972</b> looks huge, but <b class="g">$93,000 is his own stake coming home</b> — he actually earned $21,972. Rico's selling commission is most of his profit: hazard pay for moving all 1,700 units. The split keeps "money back" and "money made" in separate columns so nobody mistakes one for the other.
+    </div>
+
+    <div class="foot"><span>CUTTER · OPERATIONS BRIEFING</span><span>FOR THE <b>FAMILY</b> ONLY</span></div>
+  </div>
+</section>
+
+<!-- ============ PAGE 3 ============ -->
+<section class="page">
+  <div class="grain"></div>
+  <div class="inner">
+    <div class="mast">
+      <svg class="em" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="60" cy="60" r="56" fill="#100d18" stroke="#e8b84b" stroke-width="2.5"/>
+        <circle cx="60" cy="60" r="47" fill="none" stroke="#a8843a" stroke-width="1.6" opacity="0.85"/>
+        <text font-family="Anton" font-size="40" fill="#f2efe7" text-anchor="middle" x="60" y="74">MM</text>
+      </svg>
+      <div>
+        <div class="ttl"><b>EVERY DIAL</b> IS YOURS</div>
+        <div class="sub">TUNE THE ECONOMY TO FIT THE CREW</div>
+      </div>
+      <div class="pg">PAGE<b>03</b>TUNING</div>
+    </div>
+
+    <p class="lead">Nothing is hardcoded. Officers set every value below with a command — the math above re-runs on
+      whatever you choose, so the split always reflects <b>your</b> economy, not a template.</p>
+
+    <div class="sec"><div class="lbl">THE CONTROL BOARD</div><div class="ln"></div></div>
+    <table>
+      <tr><th>Dial</th><th>Default</th><th class="r">What it controls</th></tr>
+      <tr><td class="g">Item prices</td><td class="num">farmed $20–30 · bought $50</td><td class="r">Cost basis — reimbursement, botch charges, margin</td></tr>
+      <tr><td class="g">Labor rate</td><td class="num">$25 / successful unit</td><td class="r">The farmer ↔ cook balance</td></tr>
+      <tr><td class="g">Work / Rank split</td><td class="num">70 / 30</td><td class="r">Contribution vs. hierarchy weight</td></tr>
+      <tr><td class="g">Rank multipliers</td><td class="num">I·5 II·4 III·3 IV·2 V·1</td><td class="r">Steepness of the rank cut</td></tr>
+      <tr><td class="g">Selling commission</td><td class="num">8% of cash moved</td><td class="r">Seller hazard pay</td></tr>
+      <tr><td class="g">Reference price</td><td class="num">$125 / honey</td><td class="r">Projection only — settle uses real sales</td></tr>
+      <tr><td class="g">Recipes &amp; ranks</td><td class="num">the chain · Discord roles</td><td class="r">Add products, remap levels</td></tr>
+    </table>
+
+    <div class="sec"><div class="lbl">TUNING IN ACTION</div><div class="ln"></div><div class="hint">THE LABOR-RATE LEVER</div></div>
+    <div class="cols">
+      <div class="panel">
+        <h4>At $25 / unit — capital leads</h4>
+        <div style="font-size:12.5px;line-height:1.55;color:#bdb6a7">Fronting $50 buyables outweighs cooking. The money men land on top; <b class="g">Tony cooks 2,340 units and still finishes mid-pack.</b> Right for a crew where capital is scarce and risky.</div>
+      </div>
+      <div class="panel">
+        <h4>Toward $150 / unit — cooks climb</h4>
+        <div style="font-size:12.5px;line-height:1.55;color:#bdb6a7">Push labor toward the cost of a buyable and <b class="g">the cooks rise to match the financiers.</b> Lower it and farming &amp; funding dominate. One number sets the whole balance.</div>
+      </div>
+    </div>
+
+    <div class="callout">
+      <span class="h">HOW IT RUNS IN DISCORD</span>
+      <b class="g">/job open</b> → <b class="g">/deposit</b> materials &amp; cash → <b class="g">/process</b> each step → <b class="g">/sale</b> logs real cash → <b class="g">/settle</b> posts the payout table. <b class="g">/status</b> reconciles an op and <b class="g">/ledger</b> shows its full history — every entry on the record, so any split can be re-checked line by line.
+    </div>
+
+    <div class="callout" style="border-color:var(--green);background:rgba(95,207,130,.06)">
+      <span class="h" style="color:var(--green)">THE BOTTOM LINE</span>
+      Front it, farm it, cook it, or move it — Cutter pays each the same fair way, scales the cut to rank, and keeps
+      it clean as the crew grows. Set the dials once; the books take it from there.
+    </div>
+
+    <div class="foot"><span>CUTTER · OPERATIONS BRIEFING</span><span>PROFIT · LOYALTY · DISCRETION · <b>FAMILY</b></span></div>
+  </div>
+</section>
+
+</body>
+</html>

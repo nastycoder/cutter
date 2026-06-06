@@ -1,0 +1,17 @@
+{
+  "name": "@cutter/bot",
+  "version": "0.0.0",
+  "private": true,
+  "main": "dist/handler.js",
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@aws-sdk/client-secrets-manager": "^3.658.0",
+    "@cutter/engine": "*",
+    "@cutter/shared": "*",
+    "@discordjs/builders": "^1.9.0",
+    "discord-api-types": "^0.37.100",
+    "discord-interactions": "^4.1.0"
+  }
+}
