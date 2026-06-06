@@ -55,6 +55,68 @@ const commands = [
       },
     ],
   },
+  {
+    name: "catalog",
+    description: "View or edit item prices",
+    type: 1,
+    options: [
+      { type: 1, name: "list", description: "List catalog items & values" },
+      {
+        type: 1,
+        name: "set",
+        description: "Set an item's value (officers only)",
+        options: [
+          { type: 3, name: "item", description: "Item id (e.g. poppy)", required: true },
+          { type: 10, name: "value", description: "Catalog value ($)", required: true },
+          {
+            type: 3,
+            name: "source",
+            description: "For new items: farmed or bought",
+            required: false,
+            choices: [
+              { name: "farmed", value: "farmed" },
+              { name: "bought", value: "bought" },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  {
+    name: "rank",
+    description: "View or edit the role → level map",
+    type: 1,
+    options: [
+      { type: 1, name: "list", description: "Show the role → level map" },
+      {
+        type: 1,
+        name: "map",
+        description: "Map a role to a level (officers only)",
+        options: [
+          { type: 8, name: "role", description: "Role", required: true },
+          {
+            type: 4,
+            name: "level",
+            description: "Rank level (I = top)",
+            required: true,
+            choices: [
+              { name: "I — Leadership", value: 1 },
+              { name: "II — Consigliere", value: 2 },
+              { name: "III — Capos", value: 3 },
+              { name: "IV — Enforcers", value: 4 },
+              { name: "V — Associates", value: 5 },
+            ],
+          },
+        ],
+      },
+      {
+        type: 1,
+        name: "unmap",
+        description: "Remove a role mapping (officers only)",
+        options: [{ type: 8, name: "role", description: "Role", required: true }],
+      },
+    ],
+  },
 ];
 
 async function main() {

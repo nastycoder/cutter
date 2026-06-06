@@ -43,6 +43,9 @@ export async function listCatalog(gid: string): Promise<CatalogItem[]> {
 export async function putCatalogItem(gid: string, item: CatalogItem): Promise<void> {
   await db.putItem({ PK: db.gpk(gid), SK: `ITEM#${item.id}`, ...item });
 }
+export async function getCatalogItem(gid: string, id: string): Promise<CatalogItem | undefined> {
+  return db.getItem<CatalogItem>(db.gpk(gid), `ITEM#${id}`);
+}
 
 export async function putRecipe(gid: string, r: RecipeStep): Promise<void> {
   await db.putItem({ PK: db.gpk(gid), SK: `RECIPE#${r.lineId}#${r.step}`, ...r });
@@ -53,6 +56,9 @@ export async function putRank(gid: string, roleId: string, level: number): Promi
 }
 export async function listRanks(gid: string): Promise<{ roleId: string; level: number }[]> {
   return db.queryPrefix<{ roleId: string; level: number }>(db.gpk(gid), "RANK#");
+}
+export async function deleteRank(gid: string, roleId: string): Promise<void> {
+  await db.deleteItem(db.gpk(gid), `RANK#${roleId}`);
 }
 
 /** Seed the honey product line (the chain we've fully specced) + default dials. */

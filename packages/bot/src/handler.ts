@@ -80,6 +80,10 @@ async function route(i: any) {
       return handleSetup(i);
     case "config":
       return handleConfig(i);
+    case "catalog":
+      return handleCatalog(i);
+    case "rank":
+      return handleRank(i);
     default:
       return reply(`Unknown command: \`${commandName(i)}\``);
   }
@@ -143,4 +147,81 @@ async function handleConfig(i: any) {
       `• Officer role: ${config.officerRoleId ? `<@&${config.officerRoleId}>` : "_unset_"}`,
     ].join("\n")
   );
+}
+
+const titleCase = (id: string) =>
+  id.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+async function handleCatalog(i: any) {
+  const gid = guildId(i);
+  const config = await store.getConfig(gid);
+  const sub = subcommand(i);
+
+  if (sub === "set") {
+    if (!isOfficer(i, config)) return reply("⛔ Officers only.");
+    const id = option<string>(i, "item")!.trim();
+    const value = option<number>(i, "value")!;
+    const source = option<"farmed" | "bought">(i, "source");
+    const existing = await store.getCatalogItem(gid, id);
+    if (existing) {
+      existing.value = value;
+      if (source) existing.source = source;
+      await store.putCatalogItem(gid, existing);
+      return reply(`✅ **${existing.name}** → $${value}${source ? ` (${source})` : ""}.`);
+    }
+    await store.putCatalogItem(gid, {
+      id,
+      name: titleCase(id),
+      kind: "base",
+      value,
+      source: source ?? "bought",
+    });
+    return reply(`✅ Added **${titleCase(id)}** = $${value} (${source ?? "bought"}).`);
+  }
+
+  // list
+  const items = await store.listCatalog(gid);
+  if (!items.length) return reply("📦 Catalog is empty — run `/setup` first.");
+  const fmt = (kind: string) =>
+    items
+      .filter((it) => it.kind === kind)
+      .map((it) => `${it.name} $${it.value}${it.source ? ` _(${it.source})_` : ""}`)
+      .join(" · ") || "—";
+  return reply(
+    [
+      "📦 **Catalog**",
+      `**Base:** ${fmt("base")}`,
+      `**Intermediate:** ${fmt("intermediate")}  _(cost derived from recipes)_`,
+      `**Final:** ${fmt("final")}`,
+    ].join("\n")
+  );
+}
+
+async function handleRank(i: any) {
+  const gid = guildId(i);
+  const config = await store.getConfig(gid);
+  const sub = subcommand(i);
+
+  if (sub === "map") {
+    if (!isOfficer(i, config)) return reply("⛔ Officers only.");
+    const roleId = option<string>(i, "role")!;
+    const level = option<number>(i, "level")!;
+    await store.putRank(gid, roleId, level);
+    return reply(`✅ <@&${roleId}> → **Level ${level}** (${config.rankMultipliers[level]}×).`);
+  }
+  if (sub === "unmap") {
+    if (!isOfficer(i, config)) return reply("⛔ Officers only.");
+    const roleId = option<string>(i, "role")!;
+    await store.deleteRank(gid, roleId);
+    return reply(`✅ Removed mapping for <@&${roleId}>.`);
+  }
+
+  // list
+  const ranks = await store.listRanks(gid);
+  if (!ranks.length) return reply("🏷️ No role→level mappings yet — use `/rank map`.");
+  const body = ranks
+    .sort((a, b) => a.level - b.level)
+    .map((r) => `Level ${r.level} (${config.rankMultipliers[r.level]}×) — <@&${r.roleId}>`)
+    .join("\n");
+  return reply(`🏷️ **Rank map**\n${body}`);
 }
