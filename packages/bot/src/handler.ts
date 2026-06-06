@@ -494,24 +494,43 @@ async function handleSale(i: any) {
   return reply(`💵 <@${by}> sold **${qty}** for **$${cash}** on **${job.name}**.`, false);
 }
 
+function entryLine(e: any): string {
+  const who = `<@${e.actor}>`;
+  if (e.type === "deposit")
+    return e.deposit.cash != null ? `💰 ${who} +$${e.deposit.cash}` : `📥 ${who} +${e.deposit.qty}× ${e.deposit.itemId}`;
+  if (e.type === "withdraw")
+    return e.withdraw.cash != null ? `💸 ${who} −$${e.withdraw.cash}` : `📤 ${who} −${e.withdraw.qty}× ${e.withdraw.itemId}`;
+  if (e.type === "process") return `⚗️ ${who} ${e.process.step} → ${e.process.made}`;
+  if (e.type === "sale") return `💵 <@${e.sale.by}> sold ${e.sale.qty} for $${e.sale.cash}`;
+  return `• ${e.type}`;
+}
+
+function ledgerBody(job: any, entries: any[], full = false): string {
+  if (!entries.length) return `📜 **${job.name}** — no entries yet.`;
+  const list = full ? entries : entries.slice(-25);
+  const more = !full && entries.length > 25 ? `\n_…${entries.length - 25} earlier (full list in the settled record)_` : "";
+  return `📜 **${job.name}** — ledger (${entries.length} entries)\n${list.map(entryLine).join("\n")}${more}`;
+}
+
+/** Post text to a channel, splitting on newlines to stay under Discord's 2000-char limit. */
+async function postChunks(channelId: string, text: string): Promise<void> {
+  const chunks: string[] = [];
+  let buf = "";
+  for (const ln of text.split("\n")) {
+    if ((buf ? buf.length + 1 : 0) + ln.length > 1900) {
+      if (buf) chunks.push(buf);
+      buf = ln;
+    } else buf = buf ? `${buf}\n${ln}` : ln;
+  }
+  if (buf) chunks.push(buf);
+  for (const c of chunks) await rest.postMessage(channelId, c);
+}
+
 async function handleLedger(i: any) {
   const job = await resolveJob(i);
   if (isErr(job)) return reply(job.error);
   const entries = await store.listEntries(job.id);
-  if (!entries.length) return reply(`📜 **${job.name}** — no entries yet.`);
-  const fmt = (e: any): string => {
-    const who = `<@${e.actor}>`;
-    if (e.type === "deposit")
-      return e.deposit.cash != null ? `💰 ${who} +$${e.deposit.cash}` : `📥 ${who} +${e.deposit.qty}× ${e.deposit.itemId}`;
-    if (e.type === "withdraw")
-      return e.withdraw.cash != null ? `💸 ${who} −$${e.withdraw.cash}` : `📤 ${who} −${e.withdraw.qty}× ${e.withdraw.itemId}`;
-    if (e.type === "process") return `⚗️ ${who} ${e.process.step} → ${e.process.made}`;
-    if (e.type === "sale") return `💵 <@${e.sale.by}> sold ${e.sale.qty} for $${e.sale.cash}`;
-    return `• ${e.type}`;
-  };
-  const recent = entries.slice(-25).map(fmt).join("\n");
-  const more = entries.length > 25 ? `\n_…${entries.length - 25} earlier_` : "";
-  return reply(`📜 **${job.name}** — ledger (${entries.length} entries)\n${recent}${more}`);
+  return reply(ledgerBody(job, entries));
 }
 
 async function handleStatus(i: any) {
@@ -525,6 +544,17 @@ async function handleStatus(i: any) {
     store.listLines(gid),
     store.getConfig(gid),
   ]);
+  return reply(statusBody(job, entries, catalog, recipes, lines, config));
+}
+
+function statusBody(
+  job: any,
+  entries: any[],
+  catalog: any[],
+  recipes: any[],
+  lines: any[],
+  config: any
+): string {
   const line = lines.find((l) => l.id === job.lineId);
   const finalId = line?.finalItemId;
   const finalName = catalog.find((c) => c.id === finalId)?.name ?? finalId ?? "product";
@@ -594,15 +624,13 @@ async function handleStatus(i: any) {
         ? `✅ All ${finalName} sold or withdrawn.`
         : `_No ${finalName} produced yet._`;
 
-  return reply(
-    [
-      `📊 **${job.name}** _(${line?.name ?? job.lineId})_ · ${job.status}`,
-      members.length ? "**Contributors**\n" + members.join("\n") : "_No contributions yet._",
-      `**Pool** — deposited ${m(totalDep)} · made ${madeFinal} ${finalName} · sold ${soldQty} for ${m(revenue)}`,
-      `**On hand** — ${onHand.length ? onHand.join(" · ") : "nothing"}`,
-      recon,
-    ].join("\n")
-  );
+  return [
+    `📊 **${job.name}** _(${line?.name ?? job.lineId})_ · ${job.status}`,
+    members.length ? "**Contributors**\n" + members.join("\n") : "_No contributions yet._",
+    `**Pool** — deposited ${m(totalDep)} · made ${madeFinal} ${finalName} · sold ${soldQty} for ${m(revenue)}`,
+    `**On hand** — ${onHand.length ? onHand.join(" · ") : "nothing"}`,
+    recon,
+  ].join("\n");
 }
 
 function bestLevel(roles: string[] | undefined, rankMap: Record<string, number>): number {
@@ -669,20 +697,11 @@ async function handleSettle(i: any) {
     )
   );
   await store.setJobStatus(gid, job.id, "closed");
-  try {
-    const archiveCat = await ensureCategory(gid, config, "archiveCategoryId", "Archive");
-    await rest.modifyChannel(job.channelId, {
-      name: `💰-${slug(job.name) || "job"}-${BigInt(job.id).toString(36).slice(-5)}`,
-      parent_id: archiveCat,
-      permission_overwrites: [{ id: gid, type: 0, deny: "2048" }],
-    });
-  } catch (e) {
-    console.error("settle archive failed", e);
-  }
+  job.status = "closed";
 
   const m = (n: number) => `$${Math.round(n).toLocaleString()}`;
   const finalName = catalog.find((c) => c.id === line.finalItemId)?.name ?? "product";
-  const unsold = (inventory(entries, recipes.filter((r) => r.lineId === job.lineId), line.finalItemId)[line.finalItemId] ?? 0);
+  const unsold = inventory(entries, recipes.filter((r) => r.lineId === job.lineId), line.finalItemId)[line.finalItemId] ?? 0;
   const rows = [...result.perMember]
     .sort((a, b) => b.net - a.net)
     .map((p) => {
@@ -693,7 +712,25 @@ async function handleSettle(i: any) {
     ? `⚠️ **Loss** — revenue didn't cover capital; reimbursements paid pro-rata, no profit split.`
     : `Pool: ${m(result.revenue)} − reimbursed ${m(result.reimbursed)} − commission ${m(result.commission)} → **${m(result.distributable)}** split ${Math.round(config.workSplitPct * 100)}/${Math.round((1 - config.workSplitPct) * 100)}.` +
       (result.tiesOut ? "" : " ⚠️ rounding mismatch.") +
-      (unsold > 0.0001 ? `\n⚠️ ${(+unsold.toFixed(1))} ${finalName} were unsold — not included in this payout.` : "");
+      (unsold > 0.0001 ? `\n⚠️ ${+unsold.toFixed(1)} ${finalName} unsold — not in this payout.` : "");
+  const payout = [`💰 **SETTLEMENT — ${job.name}** _(${line.name})_ · ${m(result.revenue)}`, ...rows, foot].join("\n");
 
-  return reply([`💰 **SETTLEMENT — ${job.name}** _(${line.name})_ · ${m(result.revenue)}`, ...rows, foot].join("\n"), false);
+  // Post the self-contained dispute record (ledger → status → payout) as the channel's
+  // last messages, then archive read-only. Done before archiving so the channel is still writable.
+  try {
+    await postChunks(job.channelId, "📕 **FINAL RECORD** — settled & archived for the books.");
+    await postChunks(job.channelId, ledgerBody(job, entries, true));
+    await postChunks(job.channelId, statusBody(job, entries, catalog, recipes, lines, config));
+    await postChunks(job.channelId, payout);
+    const archiveCat = await ensureCategory(gid, config, "archiveCategoryId", "Archive");
+    await rest.modifyChannel(job.channelId, {
+      name: `💰-${slug(job.name) || "job"}-${BigInt(job.id).toString(36).slice(-5)}`,
+      parent_id: archiveCat,
+      permission_overwrites: [{ id: gid, type: 0, deny: "2048" }],
+    });
+  } catch (e) {
+    console.error("settle record/archive failed", e);
+  }
+
+  return reply(`✅ Settled **${job.name}** — ${m(result.revenue)} paid out. Full record posted to the channel; archived read-only.`, true);
 }
