@@ -121,7 +121,8 @@ export async function setJobStatus(
     GSI1PK: `${db.gpk(gid)}#${status}`,
     GSI1SK: String(job.createdAt),
   });
-  if (status !== "open") await db.deleteItem(db.gpk(gid), `CHANNEL#${job.channelId}`);
+  // Keep the channel→job pointer even when closed, so `/job reopen` can find it.
+  // Each job has its own (never-reused) channel, so there's no collision.
 }
 
 export async function appendEntry(jobId: string, entry: LedgerEntry): Promise<void> {

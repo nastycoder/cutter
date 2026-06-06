@@ -194,7 +194,12 @@ const commands = [
       {
         type: 1,
         name: "close",
-        description: "Close this channel's job without settling (officers only)",
+        description: "Close this channel's job without settling (opener or officer)",
+      },
+      {
+        type: 1,
+        name: "reopen",
+        description: "Reopen this channel's settled job for corrections (officers only)",
       },
     ],
   },
@@ -247,6 +252,19 @@ const commands = [
     name: "settle",
     description: "Settle this channel's job and post the payout (opener or officer)",
     type: 1,
+  },
+  {
+    name: "me",
+    description: "Your standing in this channel's job",
+    type: 1,
+  },
+  {
+    name: "void",
+    description: "Reverse a mistaken entry (officers only)",
+    type: 1,
+    options: [
+      { type: 3, name: "entry", description: "Pick the entry to void", required: true, autocomplete: true },
+    ],
   },
 ];
 

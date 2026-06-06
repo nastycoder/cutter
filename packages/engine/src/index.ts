@@ -20,6 +20,13 @@ export interface SettleInput {
 
 const round2 = (x: number) => Math.round(x * 100) / 100;
 
+/** Drop void markers and the entries they reverse, so corrections vanish from all math. */
+export function liveEntries(entries: LedgerEntry[]): LedgerEntry[] {
+  const voided = new Set<string>();
+  for (const e of entries) if (e.type === "void" && e.voids) voided.add(e.voids);
+  return entries.filter((e) => e.type !== "void" && !voided.has(e.id));
+}
+
 /**
  * Pure settlement engine — the waterfall from DESIGN.md §5:
  * reimburse capital → labor → revenue → commission → distributable →
@@ -51,7 +58,7 @@ export function settle(input: SettleInput): SettlementResult {
   };
 
   let revenue = 0;
-  for (const e of entries) {
+  for (const e of liveEntries(entries)) {
     if (e.type === "deposit" && e.deposit) {
       const v = e.deposit.cash ?? (values[e.deposit.itemId!] ?? 0) * (e.deposit.qty ?? 0);
       const a = get(e.actor);
@@ -206,7 +213,7 @@ export function inventory(
   const add = (id: string, q: number) => {
     inv[id] = (inv[id] ?? 0) + q;
   };
-  for (const e of entries) {
+  for (const e of liveEntries(entries)) {
     if (e.type === "deposit" && e.deposit?.itemId) add(e.deposit.itemId, e.deposit.qty ?? 0);
     else if (e.type === "withdraw" && e.withdraw?.itemId) add(e.withdraw.itemId, -(e.withdraw.qty ?? 0));
     else if (e.type === "process" && e.process) {

@@ -7,7 +7,7 @@ import {
 import * as store from "./store";
 import * as rest from "./rest";
 import { getSecret } from "./secret";
-import { buildCosts, itemValues, inventory, settle } from "@cutter/engine";
+import { buildCosts, itemValues, inventory, settle, liveEntries } from "@cutter/engine";
 import type { Config } from "@cutter/shared";
 import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda";
 
@@ -149,6 +149,10 @@ async function route(i: any) {
       return handleStatus(i);
     case "settle":
       return reply(await settleWork(i), true);
+    case "me":
+      return handleMe(i);
+    case "void":
+      return handleVoid(i);
     default:
       return reply(`Unknown command: \`${commandName(i)}\``);
   }
@@ -248,6 +252,26 @@ async function handleAutocomplete(i: any) {
       recipes
         .filter((r) => (!job || r.lineId === job.lineId) && r.step.toLowerCase().includes(q))
         .map((r) => ({ name: `${r.step} → ${r.output.itemId}`, value: r.step }))
+    );
+  }
+  if (f.name === "entry") {
+    const jobId = await store.getChannelJobId(gid, channelId(i));
+    if (!jobId) return autocompleteResult([]);
+    const entries = await store.listEntries(jobId);
+    const voided = new Set(entries.filter((e: any) => e.type === "void").map((e: any) => e.voids));
+    const label = (e: any): string => {
+      if (e.type === "deposit") return e.deposit.cash != null ? `deposit $${e.deposit.cash}` : `deposit ${e.deposit.qty}× ${e.deposit.itemId}`;
+      if (e.type === "withdraw") return e.withdraw.cash != null ? `withdraw $${e.withdraw.cash}` : `withdraw ${e.withdraw.qty}× ${e.withdraw.itemId}`;
+      if (e.type === "process") return `process ${e.process.step} → ${e.process.made}`;
+      if (e.type === "sale") return `sale ${e.sale.qty} for $${e.sale.cash}`;
+      return e.type;
+    };
+    return autocompleteResult(
+      (entries as any[])
+        .filter((e) => e.type !== "void" && !voided.has(e.id))
+        .slice(-25)
+        .reverse()
+        .map((e) => ({ name: label(e).slice(0, 100), value: e.id }))
     );
   }
   return autocompleteResult([]);
@@ -417,6 +441,26 @@ async function handleJob(i: any) {
     );
   }
 
+  if (sub === "reopen") {
+    if (!isOfficer(i, config)) return reply("⛔ Officers only.");
+    const jobId = await store.getChannelJobId(gid, channelId(i));
+    const job = jobId ? await store.getJob(jobId) : undefined;
+    if (!job) return reply("❓ No job is bound to this channel.");
+    if (job.status === "open") return reply("That job is already open.");
+    await store.setJobStatus(gid, job.id, "open");
+    try {
+      const opsCat = await ensureCategory(gid, config, "operationsCategoryId", "Operations");
+      await rest.modifyChannel(job.channelId, {
+        name: `${slug(job.name) || "job"}-${BigInt(job.id).toString(36).slice(-5)}`,
+        parent_id: opsCat,
+        permission_overwrites: [],
+      });
+    } catch (e) {
+      console.error("reopen channel failed", e);
+    }
+    return reply(`🔓 Reopened **${job.name}** — back in Operations & writable. Fix it up, then \`/settle\` again.`, false);
+  }
+
   if (sub === "close") {
     const job = await resolveJob(i);
     if (isErr(job)) return reply(job.error);
@@ -520,14 +564,17 @@ function entryLine(e: any): string {
     return e.withdraw.cash != null ? `💸 ${who} −$${e.withdraw.cash}` : `📤 ${who} −${e.withdraw.qty}× ${e.withdraw.itemId}`;
   if (e.type === "process") return `⚗️ ${who} ${e.process.step} → ${e.process.made}`;
   if (e.type === "sale") return `💵 <@${e.sale.by}> sold ${e.sale.qty} for $${e.sale.cash}`;
+  if (e.type === "void") return `🚫 ${who} voided an entry`;
   return `• ${e.type}`;
 }
 
 function ledgerBody(job: any, entries: any[], full = false): string {
   if (!entries.length) return `📜 **${job.name}** — no entries yet.`;
+  const voided = new Set(entries.filter((e) => e.type === "void").map((e) => e.voids));
   const list = full ? entries : entries.slice(-25);
+  const lines = list.map((e) => (voided.has(e.id) ? `~~${entryLine(e)}~~ _(voided)_` : entryLine(e)));
   const more = !full && entries.length > 25 ? `\n_…${entries.length - 25} earlier (full list in the settled record)_` : "";
-  return `📜 **${job.name}** — ledger (${entries.length} entries)\n${list.map(entryLine).join("\n")}${more}`;
+  return `📜 **${job.name}** — ledger (${entries.length} entries)\n${lines.join("\n")}${more}`;
 }
 
 /** Post text to a channel, splitting on newlines to stay under Discord's 2000-char limit. */
@@ -573,6 +620,7 @@ function statusBody(
   lines: any[],
   config: any
 ): string {
+  entries = liveEntries(entries);
   const line = lines.find((l) => l.id === job.lineId);
   const finalId = line?.finalItemId;
   const finalName = catalog.find((c) => c.id === finalId)?.name ?? finalId ?? "product";
@@ -794,4 +842,58 @@ async function settleWork(i: any): Promise<string> {
   }
 
   return `✅ Settled **${job.name}** — ${m(result.revenue)} paid out. Full record posted to the channel; archived read-only.`;
+}
+
+async function handleMe(i: any) {
+  const job = await resolveJob(i);
+  if (isErr(job)) return reply(job.error);
+  const gid = guildId(i);
+  const me = actorId(i);
+  const [entries, catalog, recipes, lines, config, ranks] = await Promise.all([
+    store.listEntries(job.id),
+    store.listCatalog(gid),
+    store.listRecipes(gid),
+    store.listLines(gid),
+    store.getConfig(gid),
+    store.listRanks(gid),
+  ]);
+  const line = lines.find((l) => l.id === job.lineId);
+  const values = itemValues(catalog, recipes, lines);
+  let dep = 0, lab = 0, wd = 0, soldCash = 0;
+  for (const e of liveEntries(entries) as any[]) {
+    if (e.type === "deposit" && e.actor === me) dep += e.deposit.cash ?? (values[e.deposit.itemId] ?? 0) * (e.deposit.qty ?? 0);
+    else if (e.type === "process" && e.actor === me) lab += (e.process.made ?? 0) * config.laborRate;
+    else if (e.type === "withdraw" && e.actor === me) wd += e.withdraw.cash ?? (values[e.withdraw.itemId] ?? 0) * (e.withdraw.qty ?? 0);
+    else if (e.type === "sale" && e.sale.by === me) soldCash += e.sale.cash;
+  }
+  const rankMap = Object.fromEntries(ranks.map((r) => [r.roleId, r.level]));
+  const myLevel = bestLevel(i.member?.roles, rankMap);
+  const m = (n: number) => `$${Math.round(n).toLocaleString()}`;
+  return reply(
+    [
+      `🧍 **You on ${job.name}** _(${line?.name ?? job.lineId})_`,
+      `Rank: **Level ${myLevel}** (${config.rankMultipliers[myLevel] ?? 1}×)`,
+      `Capital fronted (reimbursed first): **${m(dep)}**`,
+      `Labor produced: **${m(lab)}**`,
+      soldCash ? `Sold: ${m(soldCash)} → commission **${m(soldCash * config.commissionPct)}**` : null,
+      wd ? `Withdrawn: −${m(wd)}` : null,
+      `_Exact take-home (work + rank shares of the pool) is computed at \`/settle\`._`,
+    ]
+      .filter(Boolean)
+      .join("\n")
+  );
+}
+
+async function handleVoid(i: any) {
+  const job = await resolveJob(i);
+  if (isErr(job)) return reply(job.error);
+  const config = await store.getConfig(guildId(i));
+  if (!isOfficer(i, config)) return reply("⛔ Officers only.");
+  const entryId = option<string>(i, "entry")!;
+  const entries = await store.listEntries(job.id);
+  const target = entries.find((e) => e.id === entryId) as any;
+  if (!target) return reply("⚠️ Pick an entry from the list.");
+  if (target.type === "void") return reply("⚠️ That's already a void marker.");
+  await store.appendEntry(job.id, { id: i.id, type: "void", actor: actorId(i), ts: snowflakeTs(i.id), voids: entryId });
+  return reply(`🚫 <@${actorId(i)}> voided: ${entryLine(target)}`, false);
 }
