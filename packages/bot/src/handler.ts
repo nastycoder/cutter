@@ -7,7 +7,7 @@ import {
 import * as store from "./store";
 import * as rest from "./rest";
 import { getSecret } from "./secret";
-import { buildCosts, itemValues } from "@cutter/engine";
+import { buildCosts, itemValues, inventory } from "@cutter/engine";
 import type { Config } from "@cutter/shared";
 import {
   json,
@@ -561,8 +561,8 @@ async function handleStatus(i: any) {
     }
   }
 
-  const unaccounted = madeFinal - soldQty - wdFinalQty;
   const m = (n: number) => `$${Math.round(n).toLocaleString()}`;
+  const q = (n: number) => `${+n.toFixed(1)}`.replace(/\.0$/, "");
   const members = [...per.entries()]
     .sort((a, b) => b[1].dep + b[1].lab + b[1].sold - (a[1].dep + a[1].lab + a[1].sold))
     .map(
@@ -572,11 +572,24 @@ async function handleStatus(i: any) {
         }`
     );
 
+  // current on-hand inventory (leftover inputs, intermediates mid-chain, unsold final)
+  const inv = inventory(
+    entries,
+    recipes.filter((r) => r.lineId === job.lineId),
+    finalId
+  );
+  const nameOf = (id: string) => catalog.find((c) => c.id === id)?.name ?? id;
+  const onHand = Object.entries(inv)
+    .filter(([, n]) => Math.abs(n) > 0.0001)
+    .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+    .map(([id, n]) => `${nameOf(id)} ×${q(n)}`);
+  const finalOnHand = inv[finalId ?? ""] ?? 0;
+
   const recon =
-    unaccounted > 0
-      ? `⚠️ **${unaccounted} ${finalName}** made but not yet sold or withdrawn — clear before settling.`
+    finalOnHand > 0.0001
+      ? `⚠️ **${q(finalOnHand)} ${finalName}** not yet sold or withdrawn — clear before settling.`
       : madeFinal > 0
-        ? `✅ All ${finalName} accounted for.`
+        ? `✅ All ${finalName} sold or withdrawn.`
         : `_No ${finalName} produced yet._`;
 
   return reply(
@@ -584,6 +597,7 @@ async function handleStatus(i: any) {
       `📊 **${job.name}** _(${line?.name ?? job.lineId})_ · ${job.status}`,
       members.length ? "**Contributors**\n" + members.join("\n") : "_No contributions yet._",
       `**Pool** — deposited ${m(totalDep)} · made ${madeFinal} ${finalName} · sold ${soldQty} for ${m(revenue)}`,
+      `**On hand** — ${onHand.length ? onHand.join(" · ") : "nothing"}`,
       recon,
     ].join("\n")
   );

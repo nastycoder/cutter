@@ -81,4 +81,41 @@ export function itemValues(
   return v;
 }
 
+/**
+ * Replay the ledger into current on-hand quantities per item: deposits add,
+ * a process consumes its recipe inputs (made ÷ yield crafts) and adds its output,
+ * withdrawals and sales remove. Best-effort for variable yields (range midpoint).
+ */
+export function inventory(
+  entries: LedgerEntry[],
+  recipes: RecipeStep[],
+  finalItemId?: string
+): Record<string, number> {
+  const byStep = new Map(recipes.map((r) => [r.step, r]));
+  const inv: Record<string, number> = {};
+  const add = (id: string, q: number) => {
+    inv[id] = (inv[id] ?? 0) + q;
+  };
+  for (const e of entries) {
+    if (e.type === "deposit" && e.deposit?.itemId) add(e.deposit.itemId, e.deposit.qty ?? 0);
+    else if (e.type === "withdraw" && e.withdraw?.itemId) add(e.withdraw.itemId, -(e.withdraw.qty ?? 0));
+    else if (e.type === "process" && e.process) {
+      const r = byStep.get(e.process.step);
+      if (r) {
+        const y =
+          typeof r.output.yield === "number"
+            ? r.output.yield
+            : (r.output.yield[0] + r.output.yield[1]) / 2;
+        const crafts = y > 0 ? (e.process.made ?? 0) / y : 0;
+        for (const inp of r.inputs) add(inp.itemId, -crafts * inp.qty);
+        add(r.output.itemId, e.process.made ?? 0);
+      }
+    } else if (e.type === "sale" && finalItemId && e.sale) {
+      add(finalItemId, -(e.sale.qty ?? 0));
+    }
+  }
+  for (const k of Object.keys(inv)) if (Math.abs(inv[k]) < 1e-6) delete inv[k];
+  return inv;
+}
+
 export const ENGINE_READY = false;
