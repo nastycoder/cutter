@@ -398,7 +398,9 @@ async function handleJob(i: any) {
   if (sub === "close") {
     const job = await resolveJob(i);
     if (isErr(job)) return reply(job.error);
-    if (!isOfficer(i, config)) return reply("⛔ Officers only.");
+    if (job.createdBy !== actorId(i) && !isOfficer(i, config)) {
+      return reply("⛔ Only whoever opened this job (or an officer) can close it.");
+    }
     try {
       const archiveCat = await ensureCategory(gid, config, "archiveCategoryId", "Archive");
       await rest.modifyChannel(job.channelId, {
