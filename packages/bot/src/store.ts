@@ -4,6 +4,7 @@ import type {
   ProductLine,
   CatalogItem,
   RecipeStep,
+  LedgerEntry,
 } from "@cutter/shared";
 import * as db from "./db";
 
@@ -65,6 +66,68 @@ export async function listRanks(gid: string): Promise<{ roleId: string; level: n
 }
 export async function deleteRank(gid: string, roleId: string): Promise<void> {
   await db.deleteItem(db.gpk(gid), `RANK#${roleId}`);
+}
+
+// ---- jobs & ledger ----
+export interface JobMeta {
+  id: string;
+  name: string;
+  lineId: string;
+  status: "open" | "settling" | "closed";
+  channelId: string;
+  guildId: string;
+  createdBy: string;
+  createdAt: number;
+}
+
+export async function createJob(gid: string, job: JobMeta): Promise<void> {
+  await db.putItem({
+    PK: `JOB#${job.id}`,
+    SK: "META",
+    ...job,
+    GSI1PK: `${db.gpk(gid)}#${job.status}`,
+    GSI1SK: String(job.createdAt),
+  });
+  await db.putItem({ PK: db.gpk(gid), SK: `CHANNEL#${job.channelId}`, openJobId: job.id });
+}
+
+export async function getJob(jobId: string): Promise<JobMeta | undefined> {
+  return db.getItem<JobMeta>(`JOB#${jobId}`, "META");
+}
+
+export async function listOpenJobs(gid: string): Promise<JobMeta[]> {
+  return db.queryGSI1<JobMeta>(`${db.gpk(gid)}#open`);
+}
+
+export async function getChannelJobId(gid: string, channelId: string): Promise<string | undefined> {
+  const p = await db.getItem<{ openJobId?: string }>(db.gpk(gid), `CHANNEL#${channelId}`);
+  return p?.openJobId;
+}
+
+export async function setJobStatus(
+  gid: string,
+  jobId: string,
+  status: JobMeta["status"]
+): Promise<void> {
+  const job = await getJob(jobId);
+  if (!job) return;
+  job.status = status;
+  await db.putItem({
+    PK: `JOB#${jobId}`,
+    SK: "META",
+    ...job,
+    GSI1PK: `${db.gpk(gid)}#${status}`,
+    GSI1SK: String(job.createdAt),
+  });
+  if (status !== "open") await db.deleteItem(db.gpk(gid), `CHANNEL#${job.channelId}`);
+}
+
+export async function appendEntry(jobId: string, entry: LedgerEntry): Promise<void> {
+  await db.putItem({ PK: `JOB#${jobId}`, SK: `ENTRY#${entry.id}`, ...entry });
+}
+
+export async function listEntries(jobId: string): Promise<LedgerEntry[]> {
+  return db.queryPrefix<LedgerEntry>(`JOB#${jobId}`, "ENTRY#");
 }
 
 /** Seed the honey product line (the chain we've fully specced) + default dials. */

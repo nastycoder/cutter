@@ -176,6 +176,78 @@ const commands = [
       },
     ],
   },
+  {
+    name: "job",
+    description: "Open / list / close operations",
+    type: 1,
+    options: [
+      {
+        type: 1,
+        name: "open",
+        description: "Open a new job in this channel",
+        options: [
+          { type: 3, name: "name", description: "Job name", required: true },
+          { type: 3, name: "product", description: "Product line", required: true, autocomplete: true },
+        ],
+      },
+      { type: 1, name: "list", description: "List open jobs" },
+      {
+        type: 1,
+        name: "close",
+        description: "Close a job without settling (officers only)",
+        options: [{ type: 3, name: "job", description: "Job (default: this channel's)", required: false, autocomplete: true }],
+      },
+    ],
+  },
+  {
+    name: "deposit",
+    description: "Add materials or cash to a job",
+    type: 1,
+    options: [
+      { type: 3, name: "item", description: "Item", required: false, autocomplete: true },
+      { type: 10, name: "qty", description: "Quantity (with item)", required: false },
+      { type: 10, name: "cash", description: "Cash amount", required: false },
+      { type: 3, name: "job", description: "Job (default: this channel's)", required: false, autocomplete: true },
+    ],
+  },
+  {
+    name: "process",
+    description: "Log a craft step — report what you made",
+    type: 1,
+    options: [
+      { type: 3, name: "step", description: "Recipe step", required: true, autocomplete: true },
+      { type: 10, name: "made", description: "Units produced", required: true },
+      { type: 3, name: "job", description: "Job (default: this channel's)", required: false, autocomplete: true },
+    ],
+  },
+  {
+    name: "withdraw",
+    description: "Take materials or cash from a job",
+    type: 1,
+    options: [
+      { type: 3, name: "item", description: "Item", required: false, autocomplete: true },
+      { type: 10, name: "qty", description: "Quantity (with item)", required: false },
+      { type: 10, name: "cash", description: "Cash amount", required: false },
+      { type: 3, name: "job", description: "Job (default: this channel's)", required: false, autocomplete: true },
+    ],
+  },
+  {
+    name: "sale",
+    description: "Log a real-cash sale of the job's product",
+    type: 1,
+    options: [
+      { type: 10, name: "qty", description: "Units sold", required: true },
+      { type: 10, name: "cash", description: "Cash received", required: true },
+      { type: 6, name: "by", description: "Seller (default: you)", required: false },
+      { type: 3, name: "job", description: "Job (default: this channel's)", required: false, autocomplete: true },
+    ],
+  },
+  {
+    name: "ledger",
+    description: "Show a job's full history",
+    type: 1,
+    options: [{ type: 3, name: "job", description: "Job (default: this channel's)", required: false, autocomplete: true }],
+  },
 ];
 
 async function main() {

@@ -21,6 +21,9 @@ import {
   focusedOption,
   autocompleteResult,
   slug,
+  actorId,
+  channelId,
+  snowflakeTs,
 } from "./discord";
 
 interface DiscordSecret {
@@ -92,6 +95,18 @@ async function route(i: any) {
       return handleCatalog(i);
     case "rank":
       return handleRank(i);
+    case "job":
+      return handleJob(i);
+    case "deposit":
+      return handleDeposit(i);
+    case "process":
+      return handleProcess(i);
+    case "withdraw":
+      return handleWithdraw(i);
+    case "sale":
+      return handleSale(i);
+    case "ledger":
+      return handleLedger(i);
     default:
       return reply(`Unknown command: \`${commandName(i)}\``);
   }
@@ -158,19 +173,48 @@ async function handleConfig(i: any) {
 }
 
 async function handleAutocomplete(i: any) {
-  const focused = focusedOption(i);
-  if (focused?.name === "item") {
-    const q = focused.value.toLowerCase();
-    let items = await store.listCatalog(guildId(i));
-    // /catalog set only edits base items — intermediates are derived (build cost).
+  const f = focusedOption(i);
+  if (!f) return autocompleteResult([]);
+  const gid = guildId(i);
+  const q = f.value.toLowerCase();
+
+  if (f.name === "item") {
+    let items = await store.listCatalog(gid);
     if (subcommand(i) === "set") items = items.filter((it) => it.kind === "base");
-    const choices = items
-      .filter((it) => it.name.toLowerCase().includes(q) || it.id.includes(q))
-      .map((it) => ({
-        name: `${it.name} — $${it.value}${it.source ? ` (${it.source})` : ""}`,
-        value: it.id,
-      }));
-    return autocompleteResult(choices);
+    return autocompleteResult(
+      items
+        .filter((it) => it.name.toLowerCase().includes(q) || it.id.includes(q))
+        .map((it) => ({
+          name: it.kind === "base" ? `${it.name} — $${it.value}` : it.name,
+          value: it.id,
+        }))
+    );
+  }
+  if (f.name === "product") {
+    const lines = await store.listLines(gid);
+    return autocompleteResult(
+      lines
+        .filter((l) => l.name.toLowerCase().includes(q))
+        .map((l) => ({ name: l.name, value: l.id }))
+    );
+  }
+  if (f.name === "job") {
+    const jobs = await store.listOpenJobs(gid);
+    return autocompleteResult(
+      jobs
+        .filter((j) => j.name.toLowerCase().includes(q))
+        .map((j) => ({ name: `${j.name} (${j.lineId})`, value: j.id }))
+    );
+  }
+  if (f.name === "step") {
+    const jobId = option<string>(i, "job") ?? (await store.getChannelJobId(gid, channelId(i)));
+    const job = jobId ? await store.getJob(jobId) : undefined;
+    const recipes = await store.listRecipes(gid);
+    return autocompleteResult(
+      recipes
+        .filter((r) => (!job || r.lineId === job.lineId) && r.step.toLowerCase().includes(q))
+        .map((r) => ({ name: `${r.step} → ${r.output.itemId}`, value: r.step }))
+    );
   }
   return autocompleteResult([]);
 }
@@ -292,4 +336,155 @@ async function handleRank(i: any) {
     .map((r) => `Level ${r.level} (${config.rankMultipliers[r.level]}×) — <@&${r.roleId}>`)
     .join("\n");
   return reply(`🏷️ **Rank map**\n${body}`);
+}
+
+// ---- jobs & ledger (Phase 2) ----
+
+function isErr(x: any): x is { error: string } {
+  return x && typeof x.error === "string";
+}
+
+async function resolveJob(i: any): Promise<store.JobMeta | { error: string }> {
+  const gid = guildId(i);
+  const jobId = option<string>(i, "job") ?? (await store.getChannelJobId(gid, channelId(i)));
+  if (!jobId) return { error: "❓ No open job here — open one with `/job open`, or pass `job:`." };
+  const job = await store.getJob(jobId);
+  if (!job || job.status === "closed") return { error: "❓ That job isn't open." };
+  return job;
+}
+
+async function handleJob(i: any) {
+  const gid = guildId(i);
+  const sub = subcommand(i);
+
+  if (sub === "open") {
+    const name = option<string>(i, "name")!.trim();
+    const lineId = option<string>(i, "product")!;
+    const line = (await store.listLines(gid)).find((l) => l.id === lineId);
+    if (!line) return reply("⚠️ Pick a product line from the list.");
+    await store.createJob(gid, {
+      id: i.id,
+      name,
+      lineId,
+      status: "open",
+      channelId: channelId(i),
+      guildId: gid,
+      createdBy: actorId(i),
+      createdAt: snowflakeTs(i.id),
+    });
+    return reply(
+      `🟢 Opened **${name}** _(${line.name})_ in this channel.\nDeposit, process & sell here — \`/ledger\` shows the history.`,
+      false
+    );
+  }
+  if (sub === "list") {
+    const jobs = await store.listOpenJobs(gid);
+    if (!jobs.length) return reply("No open jobs. Start one with `/job open`.");
+    return reply(
+      "🟢 **Open jobs**\n" +
+        jobs.map((j) => `• **${j.name}** _(${j.lineId})_ — <#${j.channelId}>`).join("\n")
+    );
+  }
+  if (sub === "close") {
+    const job = await resolveJob(i);
+    if (isErr(job)) return reply(job.error);
+    const config = await store.getConfig(gid);
+    if (!isOfficer(i, config)) return reply("⛔ Officers only.");
+    await store.setJobStatus(gid, job.id, "closed");
+    return reply(`🔴 Closed **${job.name}** without settling.`, false);
+  }
+  return reply("Unknown subcommand.");
+}
+
+async function handleDeposit(i: any) {
+  const job = await resolveJob(i);
+  if (isErr(job)) return reply(job.error);
+  const gid = guildId(i);
+  const actor = actorId(i);
+  const cash = option<number>(i, "cash");
+  const itemId = option<string>(i, "item");
+  const qty = option<number>(i, "qty");
+  if (cash != null) {
+    await store.appendEntry(job.id, { id: i.id, type: "deposit", actor, ts: snowflakeTs(i.id), deposit: { cash } });
+    return reply(`💰 <@${actor}> deposited **$${cash}** → **${job.name}**.`, false);
+  }
+  if (itemId && qty != null) {
+    const item = await store.getCatalogItem(gid, itemId);
+    if (!item) return reply("⚠️ Pick an item from the list.");
+    await store.appendEntry(job.id, { id: i.id, type: "deposit", actor, ts: snowflakeTs(i.id), deposit: { itemId, qty } });
+    return reply(`📥 <@${actor}> deposited **${qty}× ${item.name}** → **${job.name}**.`, false);
+  }
+  return reply("Provide `item` + `qty`, or `cash`.");
+}
+
+async function handleWithdraw(i: any) {
+  const job = await resolveJob(i);
+  if (isErr(job)) return reply(job.error);
+  const gid = guildId(i);
+  const actor = actorId(i);
+  const cash = option<number>(i, "cash");
+  const itemId = option<string>(i, "item");
+  const qty = option<number>(i, "qty");
+  if (cash != null) {
+    await store.appendEntry(job.id, { id: i.id, type: "withdraw", actor, ts: snowflakeTs(i.id), withdraw: { cash } });
+    return reply(`💸 <@${actor}> withdrew **$${cash}** from **${job.name}**.`, false);
+  }
+  if (itemId && qty != null) {
+    const item = await store.getCatalogItem(gid, itemId);
+    if (!item) return reply("⚠️ Pick an item from the list.");
+    await store.appendEntry(job.id, { id: i.id, type: "withdraw", actor, ts: snowflakeTs(i.id), withdraw: { itemId, qty } });
+    return reply(`📤 <@${actor}> withdrew **${qty}× ${item.name}** from **${job.name}**.`, false);
+  }
+  return reply("Provide `item` + `qty`, or `cash`.");
+}
+
+async function handleProcess(i: any) {
+  const job = await resolveJob(i);
+  if (isErr(job)) return reply(job.error);
+  const step = option<string>(i, "step")!;
+  const made = option<number>(i, "made")!;
+  await store.appendEntry(job.id, {
+    id: i.id,
+    type: "process",
+    actor: actorId(i),
+    ts: snowflakeTs(i.id),
+    process: { step, made },
+  });
+  return reply(`⚗️ <@${actorId(i)}> ran **${step}** → **${made}** on **${job.name}**.`, false);
+}
+
+async function handleSale(i: any) {
+  const job = await resolveJob(i);
+  if (isErr(job)) return reply(job.error);
+  const qty = option<number>(i, "qty")!;
+  const cash = option<number>(i, "cash")!;
+  const by = option<string>(i, "by") ?? actorId(i);
+  await store.appendEntry(job.id, {
+    id: i.id,
+    type: "sale",
+    actor: actorId(i),
+    ts: snowflakeTs(i.id),
+    sale: { qty, cash, by },
+  });
+  return reply(`💵 <@${by}> sold **${qty}** for **$${cash}** on **${job.name}**.`, false);
+}
+
+async function handleLedger(i: any) {
+  const job = await resolveJob(i);
+  if (isErr(job)) return reply(job.error);
+  const entries = await store.listEntries(job.id);
+  if (!entries.length) return reply(`📜 **${job.name}** — no entries yet.`);
+  const fmt = (e: any): string => {
+    const who = `<@${e.actor}>`;
+    if (e.type === "deposit")
+      return e.deposit.cash != null ? `💰 ${who} +$${e.deposit.cash}` : `📥 ${who} +${e.deposit.qty}× ${e.deposit.itemId}`;
+    if (e.type === "withdraw")
+      return e.withdraw.cash != null ? `💸 ${who} −$${e.withdraw.cash}` : `📤 ${who} −${e.withdraw.qty}× ${e.withdraw.itemId}`;
+    if (e.type === "process") return `⚗️ ${who} ${e.process.step} → ${e.process.made}`;
+    if (e.type === "sale") return `💵 <@${e.sale.by}> sold ${e.sale.qty} for $${e.sale.cash}`;
+    return `• ${e.type}`;
+  };
+  const recent = entries.slice(-25).map(fmt).join("\n");
+  const more = entries.length > 25 ? `\n_…${entries.length - 25} earlier_` : "";
+  return reply(`📜 **${job.name}** — ledger (${entries.length} entries)\n${recent}${more}`);
 }

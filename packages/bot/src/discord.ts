@@ -40,6 +40,11 @@ export function option<T = any>(i: any, name: string): T | undefined {
 export function guildId(i: any): string {
   return i.guild_id;
 }
+export const actorId = (i: any): string => i.member?.user?.id ?? i.user?.id;
+export const channelId = (i: any): string => i.channel_id ?? i.channel?.id;
+/** Discord snowflake → unix-ms timestamp (entry ids double as ordered keys). */
+export const snowflakeTs = (id: string): number =>
+  Number((BigInt(id) >> 22n) + 1420070400000n);
 
 /** The option the user is currently typing in an autocomplete interaction. */
 export function focusedOption(i: any): { name: string; value: string } | undefined {
