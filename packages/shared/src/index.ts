@@ -36,6 +36,8 @@ export interface Config {
   commissionPct: number; // 0..1 of cash a seller moves
   rankMultipliers: Record<number, number>; // level (1..5) -> weight
   officerRoleId?: string;
+  operationsCategoryId?: string; // Discord category for active job channels
+  archiveCategoryId?: string; // Discord category for closed/settled job channels
 }
 
 /** Discord roleId -> level (1..5). Unmapped members settle at level 5. */

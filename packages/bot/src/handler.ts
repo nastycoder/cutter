@@ -4,12 +4,11 @@ import {
   InteractionResponseType,
   type APIInteraction,
 } from "discord-api-types/v10";
-import {
-  SecretsManagerClient,
-  GetSecretValueCommand,
-} from "@aws-sdk/client-secrets-manager";
 import * as store from "./store";
+import * as rest from "./rest";
+import { getSecret } from "./secret";
 import { buildCosts } from "@cutter/engine";
+import type { Config } from "@cutter/shared";
 import {
   json,
   reply,
@@ -25,24 +24,6 @@ import {
   channelId,
   snowflakeTs,
 } from "./discord";
-
-interface DiscordSecret {
-  publicKey: string;
-  appId: string;
-  botToken: string;
-}
-
-const sm = new SecretsManagerClient({});
-let cachedSecret: DiscordSecret | undefined;
-
-async function getSecret(): Promise<DiscordSecret> {
-  if (cachedSecret) return cachedSecret;
-  const res = await sm.send(
-    new GetSecretValueCommand({ SecretId: process.env.DISCORD_SECRET_ARN! })
-  );
-  cachedSecret = JSON.parse(res.SecretString!) as DiscordSecret;
-  return cachedSecret;
-}
 
 interface ProxyEvent {
   headers?: Record<string, string | undefined>;
@@ -353,39 +334,65 @@ async function resolveJob(i: any): Promise<store.JobMeta | { error: string }> {
   return job;
 }
 
+async function ensureCategory(
+  gid: string,
+  config: Config,
+  key: "operationsCategoryId" | "archiveCategoryId",
+  name: string
+): Promise<string> {
+  if (config[key]) return config[key]!;
+  const cat = await rest.createChannel(gid, { name, type: 4 });
+  config[key] = cat.id;
+  await store.putConfig(gid, config);
+  return cat.id;
+}
+
 async function handleJob(i: any) {
   const gid = guildId(i);
   const sub = subcommand(i);
+  const config = await store.getConfig(gid);
 
   if (sub === "open") {
     const name = option<string>(i, "name")!.trim();
     const lineId = option<string>(i, "product")!;
     const line = (await store.listLines(gid)).find((l) => l.id === lineId);
     if (!line) return reply("⚠️ Pick a product line from the list.");
-    const existingId = await store.getChannelJobId(gid, channelId(i));
-    if (existingId) {
-      const existing = await store.getJob(existingId);
-      if (existing && existing.status === "open") {
-        return reply(
-          `⚠️ This channel already has an open job: **${existing.name}**. Close it with \`/job close\`, or open this one in a **different channel** — one open job per channel keeps targeting unambiguous (run concurrent ops in separate channels).`
-        );
-      }
+
+    let channel: { id: string };
+    try {
+      const opsCat = await ensureCategory(gid, config, "operationsCategoryId", "Operations");
+      channel = await rest.createChannel(gid, {
+        name: `${slug(name) || "job"}-${BigInt(i.id).toString(36).slice(-5)}`,
+        type: 0,
+        parent_id: opsCat,
+        topic: `Cutter job — ${name} (${line.name})`,
+      });
+    } catch (e) {
+      console.error("channel create failed", e);
+      return reply("⚠️ I couldn't create the job channel — make sure I have **Manage Channels**, then try again.");
     }
+
     await store.createJob(gid, {
       id: i.id,
       name,
       lineId,
       status: "open",
-      channelId: channelId(i),
+      channelId: channel.id,
       guildId: gid,
       createdBy: actorId(i),
       createdAt: snowflakeTs(i.id),
     });
-    return reply(
-      `🟢 Opened **${name}** _(${line.name})_ in this channel.\nDeposit, process & sell here — \`/ledger\` shows the history.`,
-      false
-    );
+    try {
+      await rest.postMessage(
+        channel.id,
+        `🔪 **${name}** — ${line.name}\nLog the op right here: \`/deposit\` · \`/process\` · \`/sale\`. \`/ledger\` shows history, \`/status\` tracks the pool.`
+      );
+    } catch {
+      /* welcome message is best-effort */
+    }
+    return reply(`🟢 Opened **${name}** _(${line.name})_ → <#${channel.id}>`, false);
   }
+
   if (sub === "list") {
     const jobs = await store.listOpenJobs(gid);
     if (!jobs.length) return reply("No open jobs. Start one with `/job open`.");
@@ -394,13 +401,23 @@ async function handleJob(i: any) {
         jobs.map((j) => `• **${j.name}** _(${j.lineId})_ — <#${j.channelId}>`).join("\n")
     );
   }
+
   if (sub === "close") {
     const job = await resolveJob(i);
     if (isErr(job)) return reply(job.error);
-    const config = await store.getConfig(gid);
     if (!isOfficer(i, config)) return reply("⛔ Officers only.");
+    try {
+      const archiveCat = await ensureCategory(gid, config, "archiveCategoryId", "Archive");
+      await rest.modifyChannel(job.channelId, {
+        name: `✅-${slug(job.name) || "job"}-${BigInt(job.id).toString(36).slice(-5)}`,
+        parent_id: archiveCat,
+        permission_overwrites: [{ id: gid, type: 0, deny: "2048" }], // @everyone: deny Send Messages
+      });
+    } catch (e) {
+      console.error("archive failed", e);
+    }
     await store.setJobStatus(gid, job.id, "closed");
-    return reply(`🔴 Closed **${job.name}** without settling.`, false);
+    return reply(`🔴 Closed **${job.name}** — archived to read-only.`, false);
   }
   return reply("Unknown subcommand.");
 }

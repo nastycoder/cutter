@@ -24,6 +24,8 @@ export async function getConfig(gid: string): Promise<Config> {
     commissionPct: raw.commissionPct ?? DEFAULT_CONFIG.commissionPct,
     rankMultipliers: raw.rankMultipliers ?? DEFAULT_CONFIG.rankMultipliers,
     officerRoleId: raw.officerRoleId,
+    operationsCategoryId: raw.operationsCategoryId,
+    archiveCategoryId: raw.archiveCategoryId,
   };
 }
 
