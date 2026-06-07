@@ -12,6 +12,7 @@ export const DEFAULT_CONFIG: Config = {
   laborRate: 25,
   workSplitPct: 0.7,
   commissionPct: 0.08,
+  targetMargin: 0.4,
   rankMultipliers: { 1: 5, 2: 4, 3: 3, 4: 2, 5: 1 },
 };
 
@@ -22,6 +23,7 @@ export async function getConfig(gid: string): Promise<Config> {
     laborRate: raw.laborRate ?? DEFAULT_CONFIG.laborRate,
     workSplitPct: raw.workSplitPct ?? DEFAULT_CONFIG.workSplitPct,
     commissionPct: raw.commissionPct ?? DEFAULT_CONFIG.commissionPct,
+    targetMargin: raw.targetMargin ?? DEFAULT_CONFIG.targetMargin,
     rankMultipliers: raw.rankMultipliers ?? DEFAULT_CONFIG.rankMultipliers,
     officerRoleId: raw.officerRoleId,
     operationsCategoryId: raw.operationsCategoryId,

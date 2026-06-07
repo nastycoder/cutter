@@ -44,6 +44,7 @@ const commands = [
               { name: "Labor rate ($/unit)", value: "labor-rate" },
               { name: "Work split (%)", value: "work-split" },
               { name: "Sell commission (%)", value: "commission" },
+              { name: "Farm margin (%)", value: "farm-margin" },
             ],
           },
           {

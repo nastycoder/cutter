@@ -280,6 +280,7 @@ async function handleConfig(i: any) {
     if (dial === "labor-rate") config.laborRate = value;
     else if (dial === "work-split") config.workSplitPct = value / 100;
     else if (dial === "commission") config.commissionPct = value / 100;
+    else if (dial === "farm-margin") config.targetMargin = value / 100;
     await store.putConfig(gid, config);
     return reply(embed({ description: `✅ Updated **${dial}** → ${value}.`, color: COLORS.green }));
   }
@@ -305,6 +306,7 @@ async function handleConfig(i: any) {
         { name: "Labor rate", value: `$${config.laborRate} / unit`, inline: true },
         { name: "Work / Rank", value: `${Math.round(config.workSplitPct * 100)} / ${Math.round((1 - config.workSplitPct) * 100)}`, inline: true },
         { name: "Commission", value: `${Math.round(config.commissionPct * 100)}%`, inline: true },
+        { name: "Farm margin", value: `${Math.round((config.targetMargin ?? 0) * 100)}% — farmed inputs auto-priced from product`, inline: false },
         { name: "Rank weights (I→V)", value: mults, inline: false },
         { name: "Reference prices", value: refs, inline: false },
         { name: "Officer role", value: config.officerRoleId ? `<@&${config.officerRoleId}>` : "_unset_", inline: false },
@@ -410,6 +412,13 @@ const DIALS: Dial[] = [
     fill: (c) => Math.round((Math.min(c.commissionPct, 0.3) / 0.3) * 8),
     apply: (c, d) => { c.commissionPct = Math.min(1, Math.max(0, c.commissionPct + d / 100)); },
     reset: (c) => { c.commissionPct = 0.08; },
+  },
+  {
+    key: "margin", label: "Farm margin", fine: 1, coarse: 5,
+    val: (c) => `${Math.round((c.targetMargin ?? 0) * 100)} %`,
+    fill: (c) => Math.round(Math.min(c.targetMargin ?? 0, 1) * 8),
+    apply: (c, d) => { c.targetMargin = Math.min(0.95, Math.max(0, (c.targetMargin ?? 0) + d / 100)); },
+    reset: (c) => { c.targetMargin = 0.4; },
   },
   ...[1, 2, 3, 4, 5].map(
     (lvl): Dial => ({
@@ -547,7 +556,17 @@ async function handleCatalog(i: any) {
     const source = option<"farmed" | "bought">(i, "source");
     if (source) item.source = source;
     await store.putCatalogItem(gid, item);
-    return reply(embed({ description: `✅ **${item.name}** → $${item.value}${source ? ` (${source})` : ""}.`, color: COLORS.green }));
+    const autoFarmed = item.source === "farmed" && (config.targetMargin ?? 0) > 0;
+    return reply(
+      embed({
+        description:
+          `✅ **${item.name}** → $${item.value}${source ? ` (${source})` : ""}.` +
+          (autoFarmed
+            ? `\n\n_Note: this is a farmed input, so its value is auto-derived from the product price (farm margin ${Math.round((config.targetMargin ?? 0) * 100)}%). The number you set is stored but won't be used until you turn the farm margin to 0 in \`/config\`._`
+            : ""),
+        color: COLORS.green,
+      })
+    );
   }
 
   if (sub === "remove") {
@@ -564,21 +583,26 @@ async function handleCatalog(i: any) {
   if (!items.length) return reply("📦 Catalog is empty — run `/setup` first.");
   const recipes = await store.listRecipes(gid);
   const lines = await store.listLines(gid);
-  const refByFinal = new Map(lines.map((l) => [l.finalItemId, l.referencePrice]));
-  const costs = buildCosts(items, recipes);
+  const margin = config.targetMargin ?? 0;
+  const values = itemValues(items, recipes, lines, margin); // farmed back-solved, intermediates built, finals = ref price
   const money = (n: number) => `$${+n.toFixed(2)}`;
 
   const base = items
     .filter((it) => it.kind === "base")
-    .map((it) => `${it.name} ${money(it.value)}${it.source ? ` _(${it.source})_` : ""}`)
+    .map((it) => {
+      const auto = it.source === "farmed" && margin > 0;
+      return `${it.name} ${money(values[it.id] ?? it.value)}${
+        auto ? " _(farmed·auto)_" : it.source ? ` _(${it.source})_` : ""
+      }`;
+    })
     .join(" · ") || "—";
   const inter = items
     .filter((it) => it.kind === "intermediate")
-    .map((it) => `${it.name} ${money(costs[it.id] ?? 0)}`)
+    .map((it) => `${it.name} ${money(values[it.id] ?? 0)}`)
     .join(" · ") || "—";
   const fin = items
     .filter((it) => it.kind === "final")
-    .map((it) => `${it.name} ${money(refByFinal.get(it.id) ?? costs[it.id] ?? 0)}`)
+    .map((it) => `${it.name} ${money(values[it.id] ?? 0)}`)
     .join(" · ") || "—";
 
   return reply(
@@ -590,6 +614,9 @@ async function handleCatalog(i: any) {
         { name: "Intermediate — auto build cost", value: inter },
         { name: "Final — reference price", value: fin },
       ],
+      footer: margin > 0
+        ? `Farmed inputs auto-priced at ${Math.round(margin * 100)}% target margin (/config).`
+        : undefined,
     })
   );
 }
@@ -714,6 +741,18 @@ async function handleModal(i: any) {
   const line = (await store.listLines(gid)).find((l) => l.id === lineId);
   if (!line) return reply("⚠️ That product line is gone.");
 
+  // Resolve referenced items against what already exists so a recipe that builds
+  // on another (e.g. crack uses cocaine) links to the canonical item instead of
+  // minting a near-duplicate. Match by id OR by the slug of the existing name.
+  const catalog = await store.listCatalog(gid);
+  const byId = new Map(catalog.map((c) => [c.id, c]));
+  const nameIndex = new Map<string, string>();
+  for (const c of catalog) {
+    nameIndex.set(c.id, c.id);
+    nameIndex.set(slug(c.name), c.id);
+  }
+  const resolveId = (rawName: string) => nameIndex.get(slug(rawName)) ?? slug(rawName);
+
   const text: string = i.data.components?.[0]?.components?.[0]?.value ?? "";
   interface ParsedStep {
     step: string;
@@ -730,7 +769,7 @@ async function handleModal(i: any) {
     const step = slug(m[1].replace(/\*/g, ""));
     const inputs = m[2].split("+").map((p) => p.trim()).filter(Boolean).map((p) => {
       const mm = p.match(/^(\d+(?:\.\d+)?)\s+(.+)$/);
-      return mm ? { itemId: slug(mm[2]), name: mm[2].trim(), qty: Number(mm[1]) } : null;
+      return mm ? { itemId: resolveId(mm[2]), name: mm[2].trim(), qty: Number(mm[1]) } : null;
     });
     const outM = m[3].trim().match(/^(\d+)(?:-(\d+))?\s+(.+)$/);
     if (!step || inputs.some((x) => !x) || !outM) { errors.push(raw); continue; }
@@ -738,7 +777,7 @@ async function handleModal(i: any) {
       step,
       canFail,
       inputs: inputs as { itemId: string; name: string; qty: number }[],
-      output: { itemId: slug(outM[3]), name: outM[3].trim(), yield: outM[2] ? [Number(outM[1]), Number(outM[2])] : Number(outM[1]) },
+      output: { itemId: resolveId(outM[3]), name: outM[3].trim(), yield: outM[2] ? [Number(outM[1]), Number(outM[2])] : Number(outM[1]) },
     });
   }
   if (!steps.length) {
@@ -746,9 +785,16 @@ async function handleModal(i: any) {
   }
 
   const outputs = new Set(steps.map((s) => s.output.itemId));
-  const existing = new Set((await store.listCatalog(gid)).map((c) => c.id));
+  const existing = new Set(catalog.map((c) => c.id));
   const newBase: string[] = [];
+  const linked = new Set<string>(); // existing produced items this recipe builds on
   const ensureItem = async (id: string, name: string, kind: "base" | "intermediate" | "final") => {
+    const ex = byId.get(id);
+    if (ex) {
+      // Reuse the existing item untouched; note when we're consuming another line's product.
+      if (ex.kind !== "base" && ex.lineId !== lineId) linked.add(ex.name);
+      return;
+    }
     if (existing.has(id)) return;
     await store.putCatalogItem(
       gid,
@@ -778,6 +824,7 @@ async function handleModal(i: any) {
       color: COLORS.green,
       description: [
         `**${line.name}** — ${steps.length} step(s) saved.`,
+        linked.size ? `🔗 Builds on existing: ${[...linked].join(", ")}` : "",
         newBase.length ? `New base items to price (\`/catalog set\`): ${newBase.join(", ")}` : "",
         errors.length ? `⚠️ Skipped ${errors.length} unparseable line(s).` : "",
       ]

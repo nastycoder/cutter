@@ -34,7 +34,7 @@ export function liveEntries(entries: LedgerEntry[]): LedgerEntry[] {
  */
 export function settle(input: SettleInput): SettlementResult {
   const { config, catalog, recipes, line, entries, memberLevels } = input;
-  const values = itemValues(catalog, recipes, [line]);
+  const values = itemValues(catalog, recipes, [line], config.targetMargin ?? 0);
   const levelOf = (u: string) => memberLevels[u] ?? 5;
   const weightOf = (u: string) => config.rankMultipliers[levelOf(u)] ?? 1;
 
@@ -185,15 +185,67 @@ export function buildCosts(
 }
 
 /**
+ * Back-solve the per-unit value of a line's *farmed* inputs from its reference
+ * price: pick a single $/unit `f` (shared by all farmed inputs of the line) so
+ * that building one final unit costs `referencePrice × (1 − margin)`. Because the
+ * final's build cost is linear in `f`, we sample it at f=0 and f=1 to recover the
+ * slope, then solve. Result is clamped ≥ 0 (a margin that bought costs already
+ * blow through leaves farmed inputs worth nothing rather than going negative).
+ */
+export function farmValue(
+  catalog: CatalogItem[],
+  recipes: RecipeStep[],
+  line: ProductLine,
+  margin: number
+): number {
+  const farmedIds = new Set(
+    catalog.filter((c) => c.source === "farmed" && c.lineId === line.id).map((c) => c.id)
+  );
+  if (!farmedIds.size) return 0;
+  const at = (f: number) =>
+    buildCosts(
+      catalog.map((c) => (farmedIds.has(c.id) ? { ...c, value: f } : c)),
+      recipes
+    )[line.finalItemId] ?? 0;
+  const b0 = at(0);
+  const slope = at(1) - b0; // build-cost increase per $1 of farmed value
+  if (slope <= 0) return 0;
+  const target = line.referencePrice * (1 - margin);
+  return Math.max(0, (target - b0) / slope);
+}
+
+/** Map of every farmed base item → its auto-derived per-unit value (per its line). */
+export function farmValues(
+  catalog: CatalogItem[],
+  recipes: RecipeStep[],
+  lines: ProductLine[],
+  margin: number
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!(margin > 0)) return out; // margin 0 → keep static catalog values
+  for (const l of lines) {
+    const f = farmValue(catalog, recipes, l, margin);
+    for (const c of catalog) if (c.source === "farmed" && c.lineId === l.id) out[c.id] = f;
+  }
+  return out;
+}
+
+/**
  * Effective per-unit value of every item for deposits/withdrawals:
- * base = catalog value, intermediate = build cost, final = the line's reference price.
+ * base bought = catalog value, base farmed = back-solved from the reference price
+ * (when margin > 0), intermediate = build cost, final = the line's reference price.
  */
 export function itemValues(
   catalog: CatalogItem[],
   recipes: RecipeStep[],
-  lines: ProductLine[]
+  lines: ProductLine[],
+  margin = 0
 ): Record<string, number> {
-  const v = buildCosts(catalog, recipes);
+  const fv = farmValues(catalog, recipes, lines, margin);
+  const cat = Object.keys(fv).length
+    ? catalog.map((c) => (fv[c.id] !== undefined ? { ...c, value: fv[c.id] } : c))
+    : catalog;
+  const v = buildCosts(cat, recipes);
   for (const l of lines) v[l.finalItemId] = l.referencePrice;
   return v;
 }

@@ -7,7 +7,7 @@ export interface CatalogItem {
   id: string;
   name: string;
   kind: ItemKind;
-  value: number; // cost-basis (farm-labor or black-market price); 0 for derived intermediates
+  value: number; // bought = black-market price; farmed = auto-derived (ignored when targetMargin>0); 0 for intermediates
   source?: ItemSource;
   lineId?: string; // omitted = shared (e.g. cleaning kit)
 }
@@ -34,6 +34,7 @@ export interface Config {
   laborRate: number; // $ per unit produced
   workSplitPct: number; // 0..1 — rank gets (1 - workSplitPct)
   commissionPct: number; // 0..1 of cash a seller moves
+  targetMargin?: number; // 0..1 — farmed inputs back-solved so final build cost = refPrice × (1−margin); 0/undefined = static
   rankMultipliers: Record<number, number>; // level (1..5) -> weight
   officerRoleId?: string;
   operationsCategoryId?: string; // Discord category for active job channels

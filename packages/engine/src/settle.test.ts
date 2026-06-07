@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { settle, buildCosts, itemValues, inventory, liveEntries } from "./index";
+import { settle, buildCosts, itemValues, inventory, liveEntries, farmValue } from "./index";
 import type { CatalogItem, RecipeStep, ProductLine, Config, LedgerEntry } from "@cutter/shared";
 
 // ---- honey fixtures (mirror seedDefaults) ----
@@ -56,6 +56,28 @@ test("itemValues = build cost, final overridden to reference price", () => {
   assert.equal(v.poppy, 20);
   assert.equal(v.cut_heroin, 45);
   assert.equal(v.honey, 125);
+});
+
+test("farmValue back-solves a farmed $/unit so the final hits the margin target", () => {
+  const f = farmValue(catalog, recipes, line, 0.4);
+  assert.ok(Math.abs(f - 12.5 / 0.4375) < 1e-6); // ≈ $28.57
+  // building one honey at that farmed value lands on refPrice × (1 − margin) = $75
+  const cat = catalog.map((c) => (c.source === "farmed" ? { ...c, value: f } : c));
+  assert.ok(Math.abs(buildCosts(cat, recipes).honey - 75) < 1e-6);
+});
+
+test("itemValues(margin) auto-prices farmed inputs; bought + final untouched", () => {
+  const v = itemValues(catalog, recipes, [line], 0.4);
+  const f = 12.5 / 0.4375;
+  assert.ok(Math.abs(v.poppy - f) < 1e-6);
+  assert.ok(Math.abs(v.acetone - f) < 1e-6); // single shared farmed value
+  assert.equal(v.vial, 50); // bought stays at its black-market price
+  assert.equal(v.honey, 125); // final = reference price
+});
+
+test("higher margin → cheaper farmed inputs, clamped at 0", () => {
+  assert.ok(farmValue(catalog, recipes, line, 0.3) > farmValue(catalog, recipes, line, 0.4));
+  assert.equal(farmValue(catalog, recipes, line, 0.5), 0); // target 62.5 = bought-only cost → nothing left
 });
 
 test("buildCosts uses the midpoint for a variable yield", () => {
