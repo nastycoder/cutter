@@ -53,6 +53,7 @@ import {
   reply,
   embed,
   COLORS,
+  type MsgData,
   commandName,
   subcommand,
   option,
@@ -97,6 +98,10 @@ export async function handler(event: any) {
 
   if (interaction.type === InteractionType.ApplicationCommandAutocomplete) {
     return handleAutocomplete(interaction);
+  }
+
+  if (interaction.type === InteractionType.MessageComponent) {
+    return handleComponent(interaction);
   }
 
   if (interaction.type === InteractionType.ApplicationCommand) {
@@ -200,6 +205,11 @@ async function handleConfig(i: any) {
     return reply(embed({ description: `✅ Updated **${dial}** → ${value}.`, color: COLORS.green }));
   }
 
+  if (sub === "panel") {
+    if (!isOfficer(i, config)) return reply("⛔ Officers only.");
+    return reply(renderPanel(config, DIALS[0].key), true);
+  }
+
   // view
   const lines = await store.listLines(gid);
   const refs =
@@ -281,6 +291,151 @@ async function handleAutocomplete(i: any) {
     );
   }
   return autocompleteResult([]);
+}
+
+// ---- /config interactive panel ----
+
+const clampFill = (n: number) => Math.max(0, Math.min(8, n));
+const BAR = (fill: number) => "▰".repeat(clampFill(fill)) + "░".repeat(8 - clampFill(fill));
+const RANK_DEFAULT: Record<number, number> = { 1: 5, 2: 4, 3: 3, 4: 2, 5: 1 };
+
+interface Dial {
+  key: string;
+  label: string;
+  fine: number;
+  coarse: number;
+  val: (c: Config) => string;
+  fill: (c: Config) => number;
+  apply: (c: Config, d: number) => void;
+  reset: (c: Config) => void;
+}
+
+const DIALS: Dial[] = [
+  {
+    key: "labor", label: "Labor rate", fine: 1, coarse: 10,
+    val: (c) => `$${c.laborRate} / unit`,
+    fill: (c) => Math.round((Math.min(c.laborRate, 200) / 200) * 8),
+    apply: (c, d) => { c.laborRate = Math.max(0, c.laborRate + d); },
+    reset: (c) => { c.laborRate = 25; },
+  },
+  {
+    key: "split", label: "Work / Rank", fine: 1, coarse: 5,
+    val: (c) => `${Math.round(c.workSplitPct * 100)} / ${Math.round((1 - c.workSplitPct) * 100)}`,
+    fill: (c) => Math.round(c.workSplitPct * 8),
+    apply: (c, d) => { c.workSplitPct = Math.min(1, Math.max(0, c.workSplitPct + d / 100)); },
+    reset: (c) => { c.workSplitPct = 0.7; },
+  },
+  {
+    key: "commission", label: "Sell commission", fine: 1, coarse: 5,
+    val: (c) => `${Math.round(c.commissionPct * 100)} %`,
+    fill: (c) => Math.round((Math.min(c.commissionPct, 0.3) / 0.3) * 8),
+    apply: (c, d) => { c.commissionPct = Math.min(1, Math.max(0, c.commissionPct + d / 100)); },
+    reset: (c) => { c.commissionPct = 0.08; },
+  },
+  ...[1, 2, 3, 4, 5].map(
+    (lvl): Dial => ({
+      key: `rank${lvl}`, label: `Rank L${lvl} weight`, fine: 1, coarse: 1,
+      val: (c) => `${c.rankMultipliers[lvl] ?? 0}×`,
+      fill: (c) => Math.round((Math.min(c.rankMultipliers[lvl] ?? 0, 10) / 10) * 8),
+      apply: (c, d) => { c.rankMultipliers[lvl] = Math.max(0, (c.rankMultipliers[lvl] ?? 0) + d); },
+      reset: (c) => { c.rankMultipliers[lvl] = RANK_DEFAULT[lvl]; },
+    })
+  ),
+];
+
+const stepBtn = (key: string, delta: number, label: string) => ({
+  type: 2,
+  style: 2,
+  label,
+  custom_id: `cfg:step:${key}:${delta}`,
+});
+
+function renderPanel(config: Config, focusedKey: string): MsgData {
+  const focused = DIALS.find((d) => d.key === focusedKey) ?? DIALS[0];
+  const lines = DIALS.map(
+    (d) => `${d.key === focused.key ? "▸" : " "} ${d.label.padEnd(16)} ${BAR(d.fill(config))}  ${d.val(config)}`
+  );
+  return {
+    embeds: [
+      {
+        title: "⚙️ Economy dials",
+        description: "```\n" + lines.join("\n") + "\n```",
+        color: COLORS.gold,
+        footer: { text: `Adjusting: ${focused.label}` },
+      },
+    ],
+    components: [
+      {
+        type: 1,
+        components: [
+          {
+            type: 3,
+            custom_id: "cfg:sel",
+            placeholder: "Pick a dial to adjust",
+            options: DIALS.map((d) => ({ label: d.label, value: d.key, default: d.key === focused.key })),
+          },
+        ],
+      },
+      {
+        type: 1,
+        components: [
+          stepBtn(focused.key, -focused.coarse, `−${focused.coarse}`),
+          stepBtn(focused.key, -focused.fine, `−${focused.fine}`),
+          stepBtn(focused.key, focused.fine, `+${focused.fine}`),
+          stepBtn(focused.key, focused.coarse, `+${focused.coarse}`),
+        ],
+      },
+      {
+        type: 1,
+        components: [
+          { type: 2, style: 4, label: "Reset", custom_id: `cfg:reset:${focused.key}` },
+          { type: 2, style: 3, label: "Done", custom_id: "cfg:done" },
+        ],
+      },
+    ],
+  };
+}
+
+async function handleComponent(i: any) {
+  const cid: string = i.data?.custom_id ?? "";
+  if (!cid.startsWith("cfg:")) return json({ type: 6 }); // DeferredMessageUpdate — ignore
+  const gid = guildId(i);
+  const config = await store.getConfig(gid);
+  if (!isOfficer(i, config)) {
+    return json({ type: 4, data: { content: "⛔ Officers only.", flags: 64 } });
+  }
+  const [, action, key, deltaStr] = cid.split(":");
+  let focused = key ?? DIALS[0].key;
+  if (action === "sel") {
+    focused = i.data.values?.[0] ?? DIALS[0].key;
+  } else if (action === "step") {
+    const dial = DIALS.find((d) => d.key === key);
+    if (dial) {
+      dial.apply(config, Number(deltaStr));
+      await store.putConfig(gid, config);
+    }
+  } else if (action === "reset") {
+    const dial = DIALS.find((d) => d.key === key);
+    if (dial) {
+      dial.reset(config);
+      await store.putConfig(gid, config);
+    }
+  } else if (action === "done") {
+    return json({
+      type: 7, // UpdateMessage
+      data: {
+        embeds: [
+          {
+            title: "⚙️ Dials saved",
+            color: COLORS.green,
+            description: DIALS.map((d) => `**${d.label}:** ${d.val(config)}`).join("\n"),
+          },
+        ],
+        components: [],
+      },
+    });
+  }
+  return json({ type: 7, data: renderPanel(config, focused) });
 }
 
 async function handleCatalog(i: any) {

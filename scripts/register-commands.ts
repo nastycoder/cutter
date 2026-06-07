@@ -29,6 +29,7 @@ const commands = [
     type: 1,
     options: [
       { type: 1, name: "view", description: "Show the current dials" },
+      { type: 1, name: "panel", description: "Open the interactive dial panel (officers only)" },
       {
         type: 1,
         name: "set",
