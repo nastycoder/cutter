@@ -80,6 +80,34 @@ test("higher margin → cheaper farmed inputs, clamped at 0", () => {
   assert.equal(farmValue(catalog, recipes, line, 0.5), 0); // target 62.5 = bought-only cost → nothing left
 });
 
+test("cross-line build: crack values loose cocaine via the cocaine line's farmed back-solve", () => {
+  const cat: CatalogItem[] = [
+    { id: "coca_leaf", name: "Coca leaf", kind: "base", value: 0, source: "farmed", lineId: "cocaine" },
+    { id: "chemicals", name: "Chemicals", kind: "base", value: 50, source: "bought", lineId: "cocaine" },
+    { id: "loose_cocaine", name: "Loose cocaine", kind: "intermediate", value: 0, lineId: "cocaine" },
+    { id: "cocaine_bag", name: "Cocaine bag", kind: "final", value: 0, lineId: "cocaine" },
+    { id: "baking", name: "Baking", kind: "base", value: 20, source: "bought", lineId: "crack" },
+    { id: "crack_rock", name: "Crack rock", kind: "final", value: 0, lineId: "crack" },
+  ];
+  const rec: RecipeStep[] = [
+    { lineId: "cocaine", step: "extract", inputs: [{ itemId: "coca_leaf", qty: 10 }, { itemId: "chemicals", qty: 1 }], output: { itemId: "loose_cocaine", yield: 4 } },
+    { lineId: "cocaine", step: "bag", inputs: [{ itemId: "loose_cocaine", qty: 4 }], output: { itemId: "cocaine_bag", yield: 1 } },
+    { lineId: "crack", step: "cook", inputs: [{ itemId: "loose_cocaine", qty: 2 }, { itemId: "baking", qty: 1 }], output: { itemId: "crack_rock", yield: 5 } },
+  ];
+  const cocaineLine: ProductLine = { id: "cocaine", name: "Cocaine", finalItemId: "cocaine_bag", referencePrice: 1000 };
+  const crackLine: ProductLine = { id: "crack", name: "Crack", finalItemId: "crack_rock", referencePrice: 300 };
+
+  const all = itemValues(cat, rec, [crackLine, cocaineLine], 0.4);
+  assert.ok(Math.abs(all.coca_leaf - 55) < 1e-6); // back-solved from cocaine's $1000 @ 40%
+  assert.ok(Math.abs(all.loose_cocaine - 150) < 1e-6); // 2.5·55 + 12.5 — loose, not the bagged final
+  assert.equal(all.cocaine_bag, 1000); // bagged coke = its own reference price
+  assert.equal(all.crack_rock, 300);
+
+  // Without the cocaine line in scope, loose cocaine collapses to bought-only cost (coca leaf = 0)
+  const crackOnly = itemValues(cat, rec, [crackLine], 0.4);
+  assert.ok(Math.abs(crackOnly.loose_cocaine - 12.5) < 1e-6);
+});
+
 test("buildCosts uses the midpoint for a variable yield", () => {
   const vc: CatalogItem[] = [
     { id: "x", name: "X", kind: "base", value: 10 },

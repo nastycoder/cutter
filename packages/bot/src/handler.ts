@@ -1065,7 +1065,7 @@ function statusBody(
   const line = lines.find((l) => l.id === job.lineId);
   const finalId = line?.finalItemId;
   const finalName = catalog.find((c) => c.id === finalId)?.name ?? finalId ?? "product";
-  const values = itemValues(catalog, recipes, lines);
+  const values = itemValues(catalog, recipes, lines, config.targetMargin ?? 0);
   const stepOut = new Map(
     recipes.filter((r) => r.lineId === job.lineId).map((r) => [r.step, r.output.itemId])
   );
@@ -1235,7 +1235,7 @@ async function settleWork(i: any): Promise<string> {
   );
   const memberLevels = Object.fromEntries(levels);
 
-  const result = settle({ config, catalog, recipes, line, entries, memberLevels });
+  const result = settle({ config, catalog, recipes, line, lines, entries, memberLevels });
 
   // persist payouts, close, archive
   await Promise.all(
@@ -1313,7 +1313,7 @@ async function handleMe(i: any) {
     store.listRanks(gid),
   ]);
   const line = lines.find((l) => l.id === job.lineId);
-  const values = itemValues(catalog, recipes, lines);
+  const values = itemValues(catalog, recipes, lines, config.targetMargin ?? 0);
   let dep = 0, lab = 0, wd = 0, soldCash = 0;
   for (const e of liveEntries(entries) as any[]) {
     if (e.type === "deposit" && e.actor === me) dep += e.deposit.cash ?? (values[e.deposit.itemId] ?? 0) * (e.deposit.qty ?? 0);

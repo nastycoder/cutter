@@ -12,7 +12,10 @@ export interface SettleInput {
   config: Config;
   catalog: CatalogItem[];
   recipes: RecipeStep[];
-  line: ProductLine;
+  line: ProductLine; // the job's product line (revenue + its final)
+  /** All guild lines, so a chain built on another line (e.g. crack ← loose cocaine)
+   *  values that line's intermediates/farmed inputs correctly. Defaults to [line]. */
+  lines?: ProductLine[];
   entries: LedgerEntry[];
   /** userId -> rank level (1..5). Missing members default to level 5. */
   memberLevels: Record<string, number>;
@@ -34,7 +37,7 @@ export function liveEntries(entries: LedgerEntry[]): LedgerEntry[] {
  */
 export function settle(input: SettleInput): SettlementResult {
   const { config, catalog, recipes, line, entries, memberLevels } = input;
-  const values = itemValues(catalog, recipes, [line], config.targetMargin ?? 0);
+  const values = itemValues(catalog, recipes, input.lines ?? [line], config.targetMargin ?? 0);
   const levelOf = (u: string) => memberLevels[u] ?? 5;
   const weightOf = (u: string) => config.rankMultipliers[levelOf(u)] ?? 1;
 
