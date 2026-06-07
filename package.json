@@ -7,7 +7,7 @@
   ],
   "scripts": {
     "build": "tsc -b packages/shared packages/engine && tsc -p packages/bot",
-    "test": "npm run build && node --test packages/engine/dist",
+    "test": "npm run build && node --test packages/engine/dist/*.test.js",
     "synth": "cdk synth",
     "deploy": "cdk deploy",
     "register": "npx ts-node scripts/register-commands.ts"

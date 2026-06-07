@@ -15,4 +15,4 @@ jobs:
           node-version: 20
       - run: npm ci
       - run: npm run build
-      - run: node --test packages/engine/dist
+      - run: node --test packages/engine/dist/*.test.js
