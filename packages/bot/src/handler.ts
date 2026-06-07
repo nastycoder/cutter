@@ -259,14 +259,22 @@ async function setupWork(i: any): Promise<MsgData | string> {
         topic: "How to use Cutter",
       });
       await rest.postMessage(ch.id, { embeds: guideEmbeds() });
-      await rest.modifyChannel(ch.id, { permission_overwrites: [{ id: gid, type: 0, deny: "2048" }] });
       config.guideChannelId = ch.id;
       await store.putConfig(gid, config);
     }
     // upload the tutorial deck once (also covers servers set up before it existed):
-    // slides inline as a gallery + the PDF to download. The bot can post even though
-    // the channel is read-only for @everyone.
+    // slides inline as a gallery + the PDF to download.
     if (config.guideChannelId && !config.guideDeckPosted) {
+      // Read-only for @everyone, but explicitly ALLOW the bot to post & attach —
+      // otherwise the upload 403s, since the bot otherwise inherits @everyone's
+      // (now denied) Send Messages. The bot's user id == the application id.
+      const { appId } = await getSecret();
+      await rest.modifyChannel(config.guideChannelId, {
+        permission_overwrites: [
+          { id: gid, type: 0, deny: "2048" }, // @everyone: no Send Messages
+          { id: appId, type: 1, allow: "52224" }, // bot: View+Send+EmbedLinks+AttachFiles
+        ],
+      });
       const slides = SLIDE_NAMES.map((n) => ({ name: n, data: readDeck(n), contentType: "image/png" }))
         .filter((s): s is { name: string; data: Uint8Array; contentType: string } => s.data != null);
       if (slides.length) {
