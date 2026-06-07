@@ -38,6 +38,7 @@ export interface Config {
   officerRoleId?: string;
   operationsCategoryId?: string; // Discord category for active job channels
   archiveCategoryId?: string; // Discord category for closed/settled job channels
+  guideChannelId?: string; // read-only guide channel created on /setup
 }
 
 /** Discord roleId -> level (1..5). Unmapped members settle at level 5. */

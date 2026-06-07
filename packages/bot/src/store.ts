@@ -26,6 +26,7 @@ export async function getConfig(gid: string): Promise<Config> {
     officerRoleId: raw.officerRoleId,
     operationsCategoryId: raw.operationsCategoryId,
     archiveCategoryId: raw.archiveCategoryId,
+    guideChannelId: raw.guideChannelId,
   };
 }
 

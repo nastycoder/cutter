@@ -17,7 +17,7 @@ const lambdaClient = new LambdaClient({});
 // then this Lambda invokes itself asynchronously to do the work and edit the reply.
 function isDeferrable(i: any): boolean {
   const n = commandName(i);
-  return n === "settle" || (n === "job" && subcommand(i) === "open");
+  return n === "settle" || n === "setup" || (n === "job" && subcommand(i) === "open");
 }
 
 async function invokeSelf(payload: unknown): Promise<void> {
@@ -32,12 +32,15 @@ async function invokeSelf(payload: unknown): Promise<void> {
 
 async function runFollowup(i: any): Promise<void> {
   try {
+    const n = commandName(i);
     const content =
-      commandName(i) === "settle"
+      n === "settle"
         ? await settleWork(i)
-        : commandName(i) === "job" && subcommand(i) === "open"
-          ? await jobOpenWork(i)
-          : "Unknown deferred command.";
+        : n === "setup"
+          ? await setupWork(i)
+          : n === "job" && subcommand(i) === "open"
+            ? await jobOpenWork(i)
+            : "Unknown deferred command.";
     await rest.editOriginal(i.application_id, i.token, content);
   } catch (e) {
     console.error("followup error", e);
@@ -108,7 +111,7 @@ export async function handler(event: any) {
     if (isDeferrable(interaction)) {
       try {
         await invokeSelf({ source: "followup", interaction });
-        const ephemeral = commandName(interaction) === "settle";
+        const ephemeral = ["settle", "setup"].includes(commandName(interaction));
         return json({
           type: InteractionResponseType.DeferredChannelMessageWithSource,
           ...(ephemeral ? { data: { flags: 64 } } : {}),
@@ -133,7 +136,7 @@ async function route(i: any) {
     case "ping":
       return reply("🔪 Cutter is live. *pong.*");
     case "setup":
-      return handleSetup(i);
+      return reply(await setupWork(i), true);
     case "config":
       return handleConfig(i);
     case "catalog":
@@ -165,28 +168,98 @@ async function route(i: any) {
   }
 }
 
-async function handleSetup(i: any) {
+function guideEmbeds() {
+  return [
+    {
+      title: "📖 Cutter — Crew Guide",
+      color: COLORS.gold,
+      description:
+        "Cutter tracks every operation and splits the haul fairly, automatically. Run commands inside an op's channel; `/settle` pays everyone out and archives the record.",
+    },
+    {
+      title: "▶️ Running an op",
+      color: COLORS.gold,
+      description:
+        "**/job open** → makes the op its own channel\n**/deposit** materials & cash · **/process** each cook (report what you made) · **/sale** real-cash sales\n**/status** to track · **/ledger** for history · **/settle** to pay out & archive",
+    },
+    {
+      title: "💬 Your commands",
+      color: COLORS.gold,
+      fields: [
+        { name: "Add to the pool", value: "`/deposit item: qty:` · `/deposit cash:`" },
+        { name: "Cook & sell", value: "`/process step: made:` · `/sale qty: cash:`" },
+        { name: "Check", value: "`/status` · `/ledger` · `/me`" },
+      ],
+    },
+    {
+      title: "💰 Four ways to get paid",
+      color: COLORS.green,
+      description:
+        "**① Capital back** — fronted materials/cash reimbursed first\n**② Work (70%)** — farm, fund, or cook\n**③ Rank (30%)** — your level, from your Discord role\n**④ Commission** — hazard pay for selling",
+    },
+    {
+      title: "🏷️ Rank cuts",
+      color: COLORS.gold,
+      description:
+        "30% of profit splits by level (auto from your role):\nI Leadership **5×** · II Consigliere **4×** · III Capos **3×** · IV Enforcers **2×** · V Associates **1×**",
+    },
+    {
+      title: "🛠️ Fixes & help",
+      color: COLORS.blue,
+      description:
+        "Mistake? Officers `/void` an entry (logged, never deleted). Settled but need a fix? Officers `/job reopen` → correct → `/settle` again. Check `/status` before settling. Stuck? Ping an officer.",
+    },
+  ];
+}
+
+async function setupWork(i: any): Promise<MsgData | string> {
   const gid = guildId(i);
-  const config = await store.getConfig(gid);
+  let config = await store.getConfig(gid);
   if (!isOfficer(i, config)) {
-    return reply("⛔ `/setup` requires the **Manage Server** permission.");
+    return "⛔ `/setup` requires the **Manage Server** permission.";
   }
   const officerRoleId = option<string>(i, "officer");
   await store.seedDefaults(gid);
-  await store.putConfig(gid, { ...config, officerRoleId });
-  return reply(
-    embed({
-      title: "🛠️ Cutter is set up",
-      color: COLORS.gold,
-      description: [
-        `Officer role: <@&${officerRoleId}>`,
-        "Seeded product line **Honey** (catalog · recipes)",
-        "Default dials: labor $25/unit · 70/30 · 8% commission · ranks 5/4/3/2/1",
-        "",
-        "Next: map ranks with `/rank map`, tune with `/config`.",
-      ].join("\n"),
-    })
-  );
+  config = { ...config, officerRoleId };
+  await store.putConfig(gid, config);
+
+  // create (once) a read-only guide channel under Operations
+  let guideLine = "";
+  try {
+    if (!config.guideChannelId) {
+      const opsCat = await ensureCategory(gid, config, "operationsCategoryId", "Operations");
+      const ch = await rest.createChannel(gid, {
+        name: "📖-cutter-guide",
+        type: 0,
+        parent_id: opsCat,
+        topic: "How to use Cutter",
+      });
+      await rest.postMessage(ch.id, { embeds: guideEmbeds() });
+      await rest.modifyChannel(ch.id, { permission_overwrites: [{ id: gid, type: 0, deny: "2048" }] });
+      config.guideChannelId = ch.id;
+      await store.putConfig(gid, config);
+      guideLine = `Guide posted → <#${ch.id}> (read-only)`;
+    } else {
+      guideLine = `Guide: <#${config.guideChannelId}>`;
+    }
+  } catch (e) {
+    console.error("guide channel failed", e);
+  }
+
+  return embed({
+    title: "🛠️ Cutter is set up",
+    color: COLORS.gold,
+    description: [
+      `Officer role: <@&${officerRoleId}>`,
+      "Seeded product line **Honey** (catalog · recipes)",
+      "Default dials: labor $25/unit · 70/30 · 8% commission · ranks 5/4/3/2/1",
+      guideLine,
+      "",
+      "Next: map ranks with `/rank map`, tune with `/config`.",
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  });
 }
 
 async function handleConfig(i: any) {
