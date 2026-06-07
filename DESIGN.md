@@ -248,7 +248,7 @@ Tony $12,518 · Lou $10,855, summing to $220,000.
 - **Deferred**: `/settle` returns type 5 within 3 s, then PATCHes `/webhooks/<appId>/<interactionToken>/messages/@original` with the table (15-min window). Everything else replies inline (type 4).
 - **Registration**: `register-commands.ts` upserts commands via Discord REST. **Guild-scoped** for dev (instant); global for prod. Run as a deploy step / CDK custom resource.
 - **Rank detection**: `interaction.member.roles` → map via `RANK#<roleId>` → level → multiplier. Promotions in Discord update cuts automatically.
-- **Output**: payout as a monospaced **code-block table** (aligns cleanly) in the settle reply; rendered-image payouts (à la the flier) are a later polish.
+- **Output**: payout as a monospaced **code-block table** (aligns cleanly) in the settle reply; rendered-image payouts are a later polish.
 
 ---
 
