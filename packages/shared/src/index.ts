@@ -40,6 +40,7 @@ export interface Config {
   operationsCategoryId?: string; // Discord category for active job channels
   archiveCategoryId?: string; // Discord category for closed/settled job channels
   guideChannelId?: string; // read-only guide channel created on /setup
+  guideDeckPosted?: boolean; // tutorial deck uploaded to the guide channel (post once)
 }
 
 /** Discord roleId -> level (1..5). Unmapped members settle at level 5. */

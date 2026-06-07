@@ -10,8 +10,21 @@ import { getSecret } from "./secret";
 import { buildCosts, itemValues, inventory, settle, liveEntries } from "@cutter/engine";
 import type { Config } from "@cutter/shared";
 import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 const lambdaClient = new LambdaClient({});
+
+// Tutorial deck assets are bundled next to the handler (see infra commandHooks).
+const DECK_DIR = __dirname;
+const SLIDE_NAMES = Array.from({ length: 10 }, (_, k) => `tutorial-${String(k + 1).padStart(2, "0")}.png`);
+function readDeck(name: string): Uint8Array | null {
+  try {
+    return fs.readFileSync(path.join(DECK_DIR, name));
+  } catch {
+    return null;
+  }
+}
 
 // Commands whose work exceeds Discord's 3s window are deferred: we ACK immediately,
 // then this Lambda invokes itself asynchronously to do the work and edit the reply.
@@ -229,7 +242,7 @@ async function setupWork(i: any): Promise<MsgData | string> {
   config = { ...config, officerRoleId };
   await store.putConfig(gid, config);
 
-  // create (once) a read-only guide channel under Operations
+  // create (once) a read-only guide channel under Operations, and upload the deck once
   let guideLine = "";
   try {
     if (!config.guideChannelId) {
@@ -244,10 +257,26 @@ async function setupWork(i: any): Promise<MsgData | string> {
       await rest.modifyChannel(ch.id, { permission_overwrites: [{ id: gid, type: 0, deny: "2048" }] });
       config.guideChannelId = ch.id;
       await store.putConfig(gid, config);
-      guideLine = `Guide posted → <#${ch.id}> (read-only)`;
-    } else {
-      guideLine = `Guide: <#${config.guideChannelId}>`;
     }
+    // upload the tutorial deck once (also covers servers set up before it existed):
+    // slides inline as a gallery + the PDF to download. The bot can post even though
+    // the channel is read-only for @everyone.
+    if (config.guideChannelId && !config.guideDeckPosted) {
+      const slides = SLIDE_NAMES.map((n) => ({ name: n, data: readDeck(n), contentType: "image/png" }))
+        .filter((s): s is { name: string; data: Uint8Array; contentType: string } => s.data != null);
+      if (slides.length) {
+        await rest.postFiles(config.guideChannelId, slides, "📑 **Cutter tutorial** — swipe through the slides:");
+      }
+      const pdf = readDeck("Cutter-Tutorial.pdf");
+      if (pdf) {
+        await rest.postFiles(config.guideChannelId, [{ name: "Cutter-Tutorial.pdf", data: pdf, contentType: "application/pdf" }], "📄 Full deck (PDF) — download or print:");
+      }
+      if (slides.length || pdf) {
+        config.guideDeckPosted = true;
+        await store.putConfig(gid, config);
+      }
+    }
+    guideLine = `Guide + tutorial deck → <#${config.guideChannelId}> (read-only)`;
   } catch (e) {
     console.error("guide channel failed", e);
   }

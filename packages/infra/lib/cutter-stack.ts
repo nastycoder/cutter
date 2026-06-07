@@ -59,7 +59,24 @@ export class CutterStack extends Stack {
         TABLE_NAME: table.tableName,
         DISCORD_SECRET_ARN: secret.secretArn,
       },
-      bundling: { minify: true, target: "node20", sourceMap: true },
+      bundling: {
+        minify: true,
+        target: "node20",
+        sourceMap: true,
+        // ship the tutorial deck (PDF + slide PNGs) alongside the handler so
+        // /setup can upload it to the guide channel
+        commandHooks: {
+          beforeBundling: () => [],
+          beforeInstall: () => [],
+          afterBundling: (_inputDir: string, outputDir: string) => {
+            const deck = path.join(__dirname, "../../.."); // repo root
+            return [
+              `cp ${path.join(deck, "Cutter-Tutorial.pdf")} ${outputDir}/`,
+              `cp ${path.join(deck, "tutorial-")}*.png ${outputDir}/`,
+            ];
+          },
+        },
+      },
     });
     table.grantReadWriteData(fn);
     secret.grantRead(fn);
