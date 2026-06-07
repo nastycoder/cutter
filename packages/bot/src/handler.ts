@@ -170,14 +170,17 @@ async function handleSetup(i: any) {
   await store.seedDefaults(gid);
   await store.putConfig(gid, { ...config, officerRoleId });
   return reply(
-    [
-      "🛠️ **Cutter is set up.**",
-      `• Officer role: <@&${officerRoleId}>`,
-      "• Seeded product line **Honey** (catalog · recipes)",
-      "• Default dials: labor $25/unit · 70/30 work·rank · 8% commission · ranks 5/4/3/2/1",
-      "",
-      "Next: map your ranks with `/rank map`, then tune with `/config`.",
-    ].join("\n")
+    embed({
+      title: "🛠️ Cutter is set up",
+      color: COLORS.gold,
+      description: [
+        `Officer role: <@&${officerRoleId}>`,
+        "Seeded product line **Honey** (catalog · recipes)",
+        "Default dials: labor $25/unit · 70/30 · 8% commission · ranks 5/4/3/2/1",
+        "",
+        "Next: map ranks with `/rank map`, tune with `/config`.",
+      ].join("\n"),
+    })
   );
 }
 
@@ -194,7 +197,7 @@ async function handleConfig(i: any) {
     else if (dial === "work-split") config.workSplitPct = value / 100;
     else if (dial === "commission") config.commissionPct = value / 100;
     await store.putConfig(gid, config);
-    return reply(`✅ Updated **${dial}** → ${value}.`);
+    return reply(embed({ description: `✅ Updated **${dial}** → ${value}.`, color: COLORS.green }));
   }
 
   // view
@@ -297,7 +300,7 @@ async function handleCatalog(i: any) {
     const source = option<"farmed" | "bought">(i, "source") ?? "bought";
     const kind = (option<string>(i, "kind") as any) ?? "base";
     await store.putCatalogItem(gid, { id, name, kind, value, source });
-    return reply(`✅ Added **${name}** = $${value} (${source}, ${kind}).`);
+    return reply(embed({ description: `✅ Added **${name}** = $${value} (${source}, ${kind}).`, color: COLORS.green }));
   }
 
   if (sub === "set") {
@@ -314,7 +317,7 @@ async function handleCatalog(i: any) {
     const source = option<"farmed" | "bought">(i, "source");
     if (source) item.source = source;
     await store.putCatalogItem(gid, item);
-    return reply(`✅ **${item.name}** → $${item.value}${source ? ` (${source})` : ""}.`);
+    return reply(embed({ description: `✅ **${item.name}** → $${item.value}${source ? ` (${source})` : ""}.`, color: COLORS.green }));
   }
 
   if (sub === "remove") {
@@ -323,7 +326,7 @@ async function handleCatalog(i: any) {
     const item = await store.getCatalogItem(gid, id);
     if (!item) return reply("⚠️ Pick an existing item from the list.");
     await store.deleteCatalogItem(gid, id);
-    return reply(`🗑️ Removed **${item.name}**.`);
+    return reply(embed({ description: `🗑️ Removed **${item.name}**.`, color: COLORS.gray }));
   }
 
   // list
@@ -349,12 +352,15 @@ async function handleCatalog(i: any) {
     .join(" · ") || "—";
 
   return reply(
-    [
-      "📦 **Catalog**",
-      `**Base:** ${base}`,
-      `**Intermediate:** ${inter}  _(auto build cost)_`,
-      `**Final:** ${fin}  _(sells at reference price)_`,
-    ].join("\n")
+    embed({
+      title: "📦 Catalog",
+      color: COLORS.gold,
+      fields: [
+        { name: "Base", value: base },
+        { name: "Intermediate — auto build cost", value: inter },
+        { name: "Final — reference price", value: fin },
+      ],
+    })
   );
 }
 
@@ -368,13 +374,13 @@ async function handleRank(i: any) {
     const roleId = option<string>(i, "role")!;
     const level = option<number>(i, "level")!;
     await store.putRank(gid, roleId, level);
-    return reply(`✅ <@&${roleId}> → **Level ${level}** (${config.rankMultipliers[level]}×).`);
+    return reply(embed({ description: `✅ <@&${roleId}> → **Level ${level}** (${config.rankMultipliers[level]}×).`, color: COLORS.green }));
   }
   if (sub === "unmap") {
     if (!isOfficer(i, config)) return reply("⛔ Officers only.");
     const roleId = option<string>(i, "role")!;
     await store.deleteRank(gid, roleId);
-    return reply(`✅ Removed mapping for <@&${roleId}>.`);
+    return reply(embed({ description: `✅ Removed mapping for <@&${roleId}>.`, color: COLORS.gray }));
   }
   if (sub === "weights") {
     if (!isOfficer(i, config)) return reply("⛔ Officers only.");
@@ -386,7 +392,7 @@ async function handleRank(i: any) {
       .sort((a, b) => Number(a[0]) - Number(b[0]))
       .map(([, w]) => `${w}×`)
       .join(" / ");
-    return reply(`✅ Level ${level} weight → **${weight}×**.  Now (I→V): **${all}**`);
+    return reply(embed({ description: `✅ Level ${level} weight → **${weight}×**.  Now (I→V): **${all}**`, color: COLORS.green }));
   }
 
   // list
@@ -396,7 +402,7 @@ async function handleRank(i: any) {
     .sort((a, b) => a.level - b.level)
     .map((r) => `Level ${r.level} (${config.rankMultipliers[r.level]}×) — <@&${r.roleId}>`)
     .join("\n");
-  return reply(`🏷️ **Rank map**\n${body}`);
+  return reply(embed({ title: "🏷️ Rank map", description: body, color: COLORS.gold }));
 }
 
 // ---- jobs & ledger (Phase 2) ----
@@ -439,8 +445,11 @@ async function handleJob(i: any) {
     const jobs = await store.listOpenJobs(gid);
     if (!jobs.length) return reply("No open jobs. Start one with `/job open`.");
     return reply(
-      "🟢 **Open jobs**\n" +
-        jobs.map((j) => `• **${j.name}** _(${j.lineId})_ — <#${j.channelId}>`).join("\n")
+      embed({
+        title: "🟢 Open jobs",
+        color: COLORS.green,
+        description: jobs.map((j) => `• **${j.name}** _(${j.lineId})_ — <#${j.channelId}>`).join("\n"),
+      })
     );
   }
 
@@ -461,7 +470,7 @@ async function handleJob(i: any) {
     } catch (e) {
       console.error("reopen channel failed", e);
     }
-    return reply(`🔓 Reopened **${job.name}** — back in Operations & writable. Fix it up, then \`/settle\` again.`, false);
+    return reply(embed({ description: `🔓 Reopened **${job.name}** — back in Operations & writable. Fix it up, then \`/settle\` again.`, color: COLORS.blue }), false);
   }
 
   if (sub === "close") {
@@ -481,7 +490,7 @@ async function handleJob(i: any) {
       console.error("archive failed", e);
     }
     await store.setJobStatus(gid, job.id, "closed");
-    return reply(`🔴 Closed **${job.name}** — archived to read-only.`, false);
+    return reply(embed({ description: `🔴 Closed **${job.name}** — archived to read-only.`, color: COLORS.gray }), false);
   }
   return reply("Unknown subcommand.");
 }
@@ -496,13 +505,13 @@ async function handleDeposit(i: any) {
   const qty = option<number>(i, "qty");
   if (cash != null) {
     await store.appendEntry(job.id, { id: i.id, type: "deposit", actor, ts: snowflakeTs(i.id), deposit: { cash } });
-    return reply(`💰 <@${actor}> deposited **$${cash}** → **${job.name}**.`, false);
+    return reply(embed({ description: `💰 <@${actor}> deposited **$${cash}**`, color: COLORS.green }), false);
   }
   if (itemId && qty != null) {
     const item = await store.getCatalogItem(gid, itemId);
     if (!item) return reply("⚠️ Pick an item from the list.");
     await store.appendEntry(job.id, { id: i.id, type: "deposit", actor, ts: snowflakeTs(i.id), deposit: { itemId, qty } });
-    return reply(`📥 <@${actor}> deposited **${qty}× ${item.name}** → **${job.name}**.`, false);
+    return reply(embed({ description: `📥 <@${actor}> deposited **${qty}× ${item.name}**`, color: COLORS.green }), false);
   }
   return reply("Provide `item` + `qty`, or `cash`.");
 }
@@ -517,13 +526,13 @@ async function handleWithdraw(i: any) {
   const qty = option<number>(i, "qty");
   if (cash != null) {
     await store.appendEntry(job.id, { id: i.id, type: "withdraw", actor, ts: snowflakeTs(i.id), withdraw: { cash } });
-    return reply(`💸 <@${actor}> withdrew **$${cash}** from **${job.name}**.`, false);
+    return reply(embed({ description: `💸 <@${actor}> withdrew **$${cash}**`, color: COLORS.blue }), false);
   }
   if (itemId && qty != null) {
     const item = await store.getCatalogItem(gid, itemId);
     if (!item) return reply("⚠️ Pick an item from the list.");
     await store.appendEntry(job.id, { id: i.id, type: "withdraw", actor, ts: snowflakeTs(i.id), withdraw: { itemId, qty } });
-    return reply(`📤 <@${actor}> withdrew **${qty}× ${item.name}** from **${job.name}**.`, false);
+    return reply(embed({ description: `📤 <@${actor}> withdrew **${qty}× ${item.name}**`, color: COLORS.blue }), false);
   }
   return reply("Provide `item` + `qty`, or `cash`.");
 }
@@ -540,7 +549,7 @@ async function handleProcess(i: any) {
     ts: snowflakeTs(i.id),
     process: { step, made },
   });
-  return reply(`⚗️ <@${actorId(i)}> ran **${step}** → **${made}** on **${job.name}**.`, false);
+  return reply(embed({ description: `⚗️ <@${actorId(i)}> ran **${step}** → **${made}**`, color: COLORS.gold }), false);
 }
 
 async function handleSale(i: any) {
@@ -556,7 +565,7 @@ async function handleSale(i: any) {
     ts: snowflakeTs(i.id),
     sale: { qty, cash, by },
   });
-  return reply(`💵 <@${by}> sold **${qty}** for **$${cash}** on **${job.name}**.`, false);
+  return reply(embed({ description: `💵 <@${by}> sold **${qty}** for **$${cash}**`, color: COLORS.green }), false);
 }
 
 function entryLine(e: any): string {
@@ -598,7 +607,7 @@ async function handleLedger(i: any) {
   const job = await resolveJob(i);
   if (isErr(job)) return reply(job.error);
   const entries = await store.listEntries(job.id);
-  return reply(ledgerBody(job, entries));
+  return reply(embed({ description: ledgerBody(job, entries), color: COLORS.gold }));
 }
 
 async function handleStatus(i: any) {
@@ -713,7 +722,7 @@ function bestLevel(roles: string[] | undefined, rankMap: Record<string, number>)
   return best;
 }
 
-async function jobOpenWork(i: any): Promise<string> {
+async function jobOpenWork(i: any) {
   const gid = guildId(i);
   const config = await store.getConfig(gid);
   const name = option<string>(i, "name")!.trim();
@@ -753,7 +762,10 @@ async function jobOpenWork(i: any): Promise<string> {
   } catch {
     /* welcome message is best-effort */
   }
-  return `🟢 Opened **${name}** _(${line.name})_ → <#${channel.id}>`;
+  return embed({
+    description: `🟢 Opened **${name}** _(${line.name})_ → <#${channel.id}>`,
+    color: COLORS.green,
+  });
 }
 
 async function settleWork(i: any): Promise<string> {
@@ -911,5 +923,5 @@ async function handleVoid(i: any) {
   if (!target) return reply("⚠️ Pick an entry from the list.");
   if (target.type === "void") return reply("⚠️ That's already a void marker.");
   await store.appendEntry(job.id, { id: i.id, type: "void", actor: actorId(i), ts: snowflakeTs(i.id), voids: entryId });
-  return reply(`🚫 <@${actorId(i)}> voided: ${entryLine(target)}`, false);
+  return reply(embed({ description: `🚫 <@${actorId(i)}> voided: ${entryLine(target)}`, color: COLORS.red }), false);
 }
