@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cutter — Crew Guide & Setup</title>
+<style>
+  @font-face{font-family:'Anton';src:url('file:///Users/uriah/Library/Fonts/Anton-Regular.ttf')}
+  @font-face{font-family:'Oswald';src:url('file:///Users/uriah/Library/Fonts/Oswald-var.ttf');font-weight:200 700}
+  @font-face{font-family:'Teko';src:url('file:///Users/uriah/Library/Fonts/Teko-var.ttf');font-weight:300 700}
+  @font-face{font-family:'Barlow Condensed';src:url('file:///Users/uriah/Library/Fonts/BarlowCondensed-SemiBold.ttf');font-weight:600}
+  @font-face{font-family:'Barlow Condensed';src:url('file:///Users/uriah/Library/Fonts/BarlowCondensed-Medium.ttf');font-weight:500}
+
+  @page{ size:1280px 720px; margin:0; }
+  *{ margin:0; padding:0; box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  :root{
+    --bg:#09080d; --gold:#e8b84b; --gold-br:#f6d680; --gold-dp:#a87f28;
+    --white:#f2efe7; --cream:#d8d0c2; --red:#d6452f; --green:#5fcf82; --blue:#5cb0ff;
+    --muted:#8c8576; --line:#241f2c; --panel:#15121c;
+  }
+  body{ font-family:'Barlow Condensed','Oswald',sans-serif; color:var(--cream); }
+  .slide{
+    width:1280px; height:720px; position:relative; overflow:hidden; padding:64px 80px;
+    display:flex; flex-direction:column;
+    background:
+      radial-gradient(900px 600px at 50% -10%, rgba(232,184,75,.16), transparent 60%),
+      radial-gradient(900px 600px at 50% 115%, rgba(232,184,75,.07), transparent 55%),
+      linear-gradient(180deg,#0b0810,#09080d);
+  }
+  .slide:not(:last-child){ break-after:page; }
+  .grain{ position:absolute; inset:0; z-index:2; pointer-events:none; opacity:.05; mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"); }
+  .z{ position:relative; z-index:10; display:flex; flex-direction:column; height:100%; }
+
+  .kicker{ font-family:'Barlow Condensed'; font-weight:600; letter-spacing:.4em; font-size:18px; color:var(--gold-br); }
+  h1{ font-family:'Anton'; color:var(--white); line-height:.9; }
+  .step-tag{ font-family:'Anton'; font-size:22px; color:#15100a; background:linear-gradient(90deg,var(--gold-br),var(--gold-dp));
+    display:inline-block; padding:5px 18px 3px; clip-path:polygon(0 0,100% 0,calc(100% - 14px) 100%,0 100%); letter-spacing:.02em; }
+  .lead{ font-size:26px; color:#cfc7b6; line-height:1.45; }
+  .lead b{ color:var(--gold-br); }
+  ul{ list-style:none; }
+  li{ font-size:24px; color:var(--cream); line-height:1.5; padding:7px 0; padding-left:34px; position:relative; }
+  li::before{ content:"›"; position:absolute; left:6px; color:var(--gold); font-family:'Anton'; font-size:24px; }
+  li b{ color:var(--white); }
+  code,.cmd{ font-family:'Barlow Condensed'; font-weight:600; background:rgba(232,184,75,.12); border:1px solid rgba(232,184,75,.3);
+    color:var(--gold-br); border-radius:6px; padding:2px 9px; font-size:21px; }
+  .foot{ margin-top:auto; display:flex; justify-content:space-between; font-family:'Barlow Condensed'; font-weight:600;
+    letter-spacing:.28em; font-size:13px; color:var(--muted); padding-top:20px; }
+  .foot b{ color:var(--gold-dp); }
+
+  /* flow */
+  .flow{ display:flex; align-items:stretch; gap:14px; margin-top:34px; }
+  .flow .step{ flex:1; background:var(--panel); border:1px solid var(--line); border-top:3px solid var(--gold); border-radius:9px; padding:18px 16px; }
+  .flow .step .n{ font-family:'Teko'; font-weight:600; font-size:34px; color:var(--gold-br); line-height:.8; }
+  .flow .step .t{ font-family:'Anton'; font-size:19px; color:var(--white); margin:8px 0 6px; }
+  .flow .step .d{ font-size:16px; color:var(--muted); line-height:1.35; }
+  .flow .arrow{ align-self:center; color:var(--gold); font-family:'Anton'; font-size:30px; }
+
+  .cards{ display:flex; gap:18px; margin-top:30px; }
+  .card{ flex:1; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:22px; }
+  .card .h{ font-family:'Anton'; font-size:22px; color:var(--gold-br); margin-bottom:8px; }
+  .card .h .num{ font-family:'Teko'; font-size:30px; color:var(--white); margin-right:6px; }
+  .card p{ font-size:17px; color:var(--cream); line-height:1.4; }
+
+  .chipwrap{ display:flex; flex-wrap:wrap; gap:12px; margin-top:26px; }
+  .ranktable{ width:100%; border-collapse:collapse; margin-top:24px; }
+  .ranktable td{ padding:9px 14px; border-bottom:1px solid var(--line); font-size:22px; }
+  .ranktable .lvl{ font-family:'Anton'; color:var(--gold-br); width:60px; }
+  .ranktable .w{ font-family:'Teko'; font-weight:600; font-size:30px; color:var(--white); text-align:right; }
+  .em{ width:120px; height:120px; }
+</style>
+</head>
+<body>
+
+<!-- 1 · TITLE -->
+<section class="slide"><div class="z" style="justify-content:center;align-items:center;text-align:center;">
+  <svg class="em" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="60" cy="60" r="56" fill="#100d18" stroke="#e8b84b" stroke-width="2.5"/>
+    <circle cx="60" cy="60" r="47" fill="none" stroke="#a8843a" stroke-width="1.6" opacity="0.85"/>
+    <text font-family="Anton" font-size="40" fill="#f2efe7" text-anchor="middle" x="60" y="74">MM</text>
+  </svg>
+  <div class="kicker" style="margin-top:22px;">MIDNIGHT MAFIA · OPERATIONS</div>
+  <h1 style="font-size:110px;margin-top:6px;"><span style="color:var(--gold-br)">⚜ CUTTER</span></h1>
+  <div class="lead" style="font-size:30px;margin-top:8px;">Crew Guide &amp; Setup</div>
+  <div style="margin-top:18px;color:var(--muted);font-family:'Barlow Condensed';font-weight:600;letter-spacing:.3em;font-size:15px;">EVERY CUT ACCOUNTED FOR</div>
+</div></section>
+
+<!-- 2 · WHAT -->
+<section class="slide"><div class="z">
+  <div class="kicker">THE BASICS</div>
+  <h1 style="font-size:64px;margin-top:8px;">WHAT IS CUTTER?</h1>
+  <p class="lead" style="margin-top:18px;max-width:1000px;">A Discord bot that <b>tracks every operation</b> — who farmed, funded, cooked, and sold — and <b>splits the haul fair, automatically.</b></p>
+  <ul style="margin-top:18px;">
+    <li>Log the whole op in its own channel — deposits, cooks, and sales</li>
+    <li>Settle pays out by <b>capital, work, rank, and selling risk</b> — to the dollar</li>
+    <li>Every payout is <b>on the record</b> in a read-only archive — no disputes</li>
+  </ul>
+  <div class="foot"><span>CUTTER · CREW GUIDE</span><span>FOR THE <b>FAMILY</b></span></div>
+</div></section>
+
+<!-- 3 · SETUP 1 -->
+<section class="slide"><div class="z">
+  <div class="step-tag">SERVER OWNER · STEP 1</div>
+  <h1 style="font-size:60px;margin-top:14px;">ADD CUTTER TO YOUR SERVER</h1>
+  <ul style="margin-top:14px;">
+    <li>Open the invite link, pick your server, hit <b>Authorize</b></li>
+    <li>Grant <b>Manage Roles</b> + <b>Manage Channels</b> — Cutter reads ranks and creates op channels</li>
+    <li>The interactions endpoint is wired once by your admin — already done for this bot</li>
+  </ul>
+  <div style="margin-top:24px;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:16px 20px;">
+    <div style="color:var(--muted);font-size:15px;letter-spacing:.16em;">INVITE LINK</div>
+    <div style="font-family:'Barlow Condensed';font-weight:600;color:var(--gold-br);font-size:19px;word-break:break-all;margin-top:4px;">discord.com/oauth2/authorize?client_id=1512639038249504768&amp;scope=bot+applications.commands&amp;permissions=268435472</div>
+  </div>
+  <div class="foot"><span>CUTTER · SETUP</span><span>STEP <b>1 / 2</b></span></div>
+</div></section>
+
+<!-- 4 · SETUP 2 -->
+<section class="slide"><div class="z">
+  <div class="step-tag">SERVER OWNER · STEP 2</div>
+  <h1 style="font-size:60px;margin-top:14px;">CONFIGURE THE CREW</h1>
+  <ul style="margin-top:14px;">
+    <li><span class="cmd">/setup officer:@&lt;role&gt;</span> — seeds the Honey line &amp; sets who can run privileged commands <i>(needs Manage Server)</i></li>
+    <li><span class="cmd">/rank map</span> — tie each Discord role to a level <b>I–V</b> (Leadership → Associates)</li>
+    <li><span class="cmd">/config panel</span> &amp; <span class="cmd">/catalog</span> — tune labor rate, the 70/30 split, commission, weights &amp; prices</li>
+    <li><span class="cmd">/recipe</span> — add cocaine / moonshine / meth once you know the formulas</li>
+  </ul>
+  <p class="lead" style="margin-top:18px;font-size:22px;color:var(--green);">That's it — the crew can start running ops.</p>
+  <div class="foot"><span>CUTTER · SETUP</span><span>STEP <b>2 / 2</b></span></div>
+</div></section>
+
+<!-- 5 · RUNNING AN OP -->
+<section class="slide"><div class="z">
+  <div class="kicker">FOR EVERYONE</div>
+  <h1 style="font-size:60px;margin-top:8px;">RUNNING AN OP</h1>
+  <div class="flow">
+    <div class="step"><div class="n">1</div><div class="t">/job open</div><div class="d">Names the op &amp; auto-creates <b>#its-own-channel</b></div></div>
+    <div class="arrow">→</div>
+    <div class="step"><div class="n">2</div><div class="t">/deposit</div><div class="d">Add materials &amp; cash to the pool</div></div>
+    <div class="arrow">→</div>
+    <div class="step"><div class="n">3</div><div class="t">/process</div><div class="d">Log each cook — report what you <b>made</b></div></div>
+    <div class="arrow">→</div>
+    <div class="step"><div class="n">4</div><div class="t">/sale</div><div class="d">Log real-cash sales</div></div>
+    <div class="arrow">→</div>
+    <div class="step" style="border-top-color:var(--green);"><div class="n" style="color:var(--green)">5</div><div class="t">/settle</div><div class="d">Pays out &amp; archives the record</div></div>
+  </div>
+  <p class="lead" style="margin-top:30px;font-size:22px;">Run every command <b>in the op's channel</b> — no IDs to type. Each op stays isolated, even two of the same product.</p>
+  <div class="foot"><span>CUTTER · CREW GUIDE</span><span>THE FLOW</span></div>
+</div></section>
+
+<!-- 6 · COMMANDS -->
+<section class="slide"><div class="z">
+  <div class="kicker">CHEAT SHEET</div>
+  <h1 style="font-size:60px;margin-top:8px;">YOUR COMMANDS</h1>
+  <div class="chipwrap">
+    <span class="cmd">/deposit item: qty:</span><span class="cmd">/deposit cash:</span>
+    <span class="cmd">/process step: made:</span><span class="cmd">/withdraw …</span>
+    <span class="cmd">/sale qty: cash:</span><span class="cmd">/status</span>
+    <span class="cmd">/ledger</span><span class="cmd">/me</span>
+  </div>
+  <ul style="margin-top:30px;">
+    <li><b>/status</b> — who's put in what, and what's still unsold</li>
+    <li><b>/ledger</b> — the full blow-by-blow history</li>
+    <li><b>/me</b> — your own standing in this op</li>
+  </ul>
+  <div class="foot"><span>CUTTER · CREW GUIDE</span><span>COMMANDS</span></div>
+</div></section>
+
+<!-- 7 · GET PAID -->
+<section class="slide"><div class="z">
+  <div class="kicker">THE SPLIT</div>
+  <h1 style="font-size:60px;margin-top:8px;">FOUR WAYS TO GET PAID</h1>
+  <div class="cards">
+    <div class="card"><div class="h"><span class="num">①</span>Capital back</div><p>Front materials or cash — reimbursed in full <b>before</b> any profit.</p></div>
+    <div class="card"><div class="h"><span class="num">②</span>Work · 70%</div><p>Farm, fund, or cook. Paid by what you put in.</p></div>
+    <div class="card"><div class="h"><span class="num">③</span>Rank · 30%</div><p>Your level in the chain, read from your Discord role.</p></div>
+    <div class="card"><div class="h"><span class="num">④</span>Commission</div><p>Hazard pay for moving product — you hold the heat.</p></div>
+  </div>
+  <p class="lead" style="margin-top:28px;font-size:21px;color:var(--muted);">Big take-home numbers are mostly your own capital coming back — the payout shows capital vs. earned separately.</p>
+  <div class="foot"><span>CUTTER · CREW GUIDE</span><span>PAYOUTS</span></div>
+</div></section>
+
+<!-- 8 · RANK CUTS -->
+<section class="slide"><div class="z">
+  <div class="kicker">THE HIERARCHY SHARE</div>
+  <h1 style="font-size:60px;margin-top:8px;">RANK CUTS</h1>
+  <p class="lead" style="margin-top:12px;font-size:22px;">30% of every job's profit is the <b>rank pool</b>, split by your level — auto-read from your Discord role.</p>
+  <table class="ranktable">
+    <tr><td class="lvl">I</td><td>Leadership — Don · Underboss</td><td class="w">5×</td></tr>
+    <tr><td class="lvl">II</td><td>Consigliere — Captain · Soldier · Warlord</td><td class="w">4×</td></tr>
+    <tr><td class="lvl">III</td><td>Capos — Dealer · Supplier · …</td><td class="w">3×</td></tr>
+    <tr><td class="lvl">IV</td><td>Enforcers — Goon · Hustler · Hittaz</td><td class="w">2×</td></tr>
+    <tr><td class="lvl">V</td><td>Associates — Runners · Lookouts</td><td class="w">1×</td></tr>
+  </table>
+  <div class="foot"><span>CUTTER · CREW GUIDE</span><span>RANK</span></div>
+</div></section>
+
+<!-- 9 · FIXES & HELP -->
+<section class="slide"><div class="z">
+  <div class="kicker">WHEN THINGS GO SIDEWAYS</div>
+  <h1 style="font-size:60px;margin-top:8px;">FIXES &amp; HELP</h1>
+  <ul style="margin-top:16px;">
+    <li>Wrong number? Officers can <span class="cmd">/void</span> any entry — it's logged, never deleted</li>
+    <li>Already settled but need a fix? Officers <span class="cmd">/job reopen</span> → correct → <span class="cmd">/settle</span> again</li>
+    <li>Check <span class="cmd">/status</span> before settling — it flags product made but not sold</li>
+    <li>Settled channels are <b>read-only archives</b> with the full record — that's your receipt</li>
+  </ul>
+  <p class="lead" style="margin-top:22px;font-size:22px;">Stuck? Ping an <b>officer</b>.</p>
+  <div class="foot"><span>CUTTER · CREW GUIDE</span><span>HELP</span></div>
+</div></section>
+
+<!-- 10 · CLOSING -->
+<section class="slide"><div class="z" style="justify-content:center;align-items:center;text-align:center;">
+  <h1 style="font-size:64px;">YOU PUT IN THE WORK.</h1>
+  <h1 style="font-size:64px;color:var(--gold-br);margin-top:4px;">CUTTER PAYS YOU RIGHT.</h1>
+  <div style="margin-top:28px;font-family:'Barlow Condensed';font-weight:600;letter-spacing:.32em;font-size:16px;color:var(--muted);">PROFIT · LOYALTY · DISCRETION · <span style="color:var(--gold)">FAMILY</span></div>
+</div></section>
+
+<script>
+  // For per-slide PNG export: load with #N to show only the Nth slide (no-op for PDF/full view).
+  const n = parseInt(location.hash.slice(1), 10);
+  if (n) document.querySelectorAll(".slide").forEach((s, i) => { if (i !== n - 1) s.style.display = "none"; });
+</script>
+</body>
+</html>
