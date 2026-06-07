@@ -69,7 +69,8 @@ export class CutterStack extends Stack {
           beforeBundling: () => [],
           beforeInstall: () => [],
           afterBundling: (_inputDir: string, outputDir: string) => {
-            const deck = path.join(__dirname, "../../.."); // repo root
+            const deck = path.join(__dirname, "../../../tutorial"); // repo's tutorial/ dir
+            // copied flat into the bundle root so the handler reads them from __dirname
             return [
               `cp ${path.join(deck, "Cutter-Tutorial.pdf")} ${outputDir}/`,
               `cp ${path.join(deck, "tutorial-")}*.png ${outputDir}/`,
