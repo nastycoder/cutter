@@ -311,4 +311,4 @@ portal's *Interactions Endpoint URL* → run `register-commands`.
 
 ### Crew-requested addenda
 - **Rank-cut reference** — standalone pinnable card: the rank pool is 30% of profit, split by weight
-  5/4/3/2/1 (Level I→V); your slice = your weight ÷ total weight of everyone on the run. See `Rank-Cut-Card`.
+  5/4/3/2/1 (Level I→V); your slice = your weight ÷ total weight of everyone on the run.
