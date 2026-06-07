@@ -245,6 +245,11 @@ async function setupWork(i: any): Promise<MsgData | string> {
   // create (once) a read-only guide channel under Operations, and upload the deck once
   let guideLine = "";
   try {
+    // if the stored guide channel was deleted, forget it (and the deck) so we rebuild
+    if (config.guideChannelId && !(await rest.getChannel(config.guideChannelId))) {
+      config.guideChannelId = undefined;
+      config.guideDeckPosted = false;
+    }
     if (!config.guideChannelId) {
       const opsCat = await ensureCategory(gid, config, "operationsCategoryId", "Operations");
       const ch = await rest.createChannel(gid, {

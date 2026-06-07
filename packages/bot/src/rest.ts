@@ -36,6 +36,17 @@ export function modifyChannel(channelId: string, opts: Record<string, unknown>):
   return dapi(`/channels/${channelId}`, { method: "PATCH", body: JSON.stringify(opts) });
 }
 
+/** Fetch a channel, or null if it no longer exists (deleted). */
+export async function getChannel(channelId: string): Promise<{ id: string } | null> {
+  const { botToken } = await getSecret();
+  const res = await fetch(`${API}/channels/${channelId}`, {
+    headers: { Authorization: `Bot ${botToken}` },
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Discord GET /channels/${channelId}: ${res.status} ${await res.text()}`);
+  return (await res.json()) as { id: string };
+}
+
 type MsgBody = string | { content?: string; embeds?: any[]; components?: any[] };
 const toBody = (m: MsgBody) => (typeof m === "string" ? { content: m } : m);
 
