@@ -11,11 +11,46 @@ export function json(payload: unknown) {
   };
 }
 
-export function reply(content: string, ephemeral = true) {
-  return json({
-    type: InteractionResponseType.ChannelMessageWithSource,
-    data: { content, ...(ephemeral ? { flags: 64 } : {}) },
-  });
+export interface MsgData {
+  content?: string;
+  embeds?: any[];
+  components?: any[];
+  flags?: number;
+}
+
+export const COLORS = {
+  gold: 0xe8b84b,
+  green: 0x5fcf82,
+  red: 0xd6452f,
+  blue: 0x5865f2,
+  gray: 0x8c8576,
+};
+
+/** Build an embed message body. */
+export function embed(opts: {
+  title?: string;
+  description?: string;
+  color?: number;
+  fields?: { name: string; value: string; inline?: boolean }[];
+  footer?: string;
+}): MsgData {
+  return {
+    embeds: [
+      {
+        title: opts.title,
+        description: opts.description,
+        color: opts.color ?? COLORS.gold,
+        fields: opts.fields,
+        footer: opts.footer ? { text: opts.footer } : undefined,
+      },
+    ],
+  };
+}
+
+export function reply(data: string | MsgData, ephemeral = true) {
+  const d: MsgData = typeof data === "string" ? { content: data } : { ...data };
+  if (ephemeral) d.flags = (d.flags ?? 0) | 64;
+  return json({ type: InteractionResponseType.ChannelMessageWithSource, data: d });
 }
 
 /** Top-level command name. */

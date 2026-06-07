@@ -31,10 +31,13 @@ export function modifyChannel(channelId: string, opts: Record<string, unknown>):
   return dapi(`/channels/${channelId}`, { method: "PATCH", body: JSON.stringify(opts) });
 }
 
-export function postMessage(channelId: string, content: string): Promise<any> {
+type MsgBody = string | { content?: string; embeds?: any[]; components?: any[] };
+const toBody = (m: MsgBody) => (typeof m === "string" ? { content: m } : m);
+
+export function postMessage(channelId: string, message: MsgBody): Promise<any> {
   return dapi(`/channels/${channelId}/messages`, {
     method: "POST",
-    body: JSON.stringify({ content }),
+    body: JSON.stringify(toBody(message)),
   });
 }
 
@@ -43,10 +46,11 @@ export function getMember(guildId: string, userId: string): Promise<{ roles: str
 }
 
 /** Edit the original (deferred) interaction reply via the interaction-token webhook. */
-export async function editOriginal(appId: string, token: string, content: string): Promise<void> {
-  const res = await fetch(
-    `${API}/webhooks/${appId}/${token}/messages/@original`,
-    { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ content }) }
-  );
+export async function editOriginal(appId: string, token: string, message: MsgBody): Promise<void> {
+  const res = await fetch(`${API}/webhooks/${appId}/${token}/messages/@original`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(toBody(message)),
+  });
   if (!res.ok) console.error("editOriginal failed", res.status, await res.text());
 }

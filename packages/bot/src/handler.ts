@@ -51,6 +51,8 @@ async function runFollowup(i: any): Promise<void> {
 import {
   json,
   reply,
+  embed,
+  COLORS,
   commandName,
   subcommand,
   option,
@@ -204,17 +206,18 @@ async function handleConfig(i: any) {
     .map(([lvl, w]) => `${w}×`)
     .join(" / ");
   return reply(
-    [
-      "⚙️ **Economy dials**",
-      `• Labor rate: **$${config.laborRate}** / unit`,
-      `• Work / Rank split: **${Math.round(config.workSplitPct * 100)} / ${Math.round(
-        (1 - config.workSplitPct) * 100
-      )}**`,
-      `• Sell commission: **${Math.round(config.commissionPct * 100)}%**`,
-      `• Rank weights (I→V): **${mults}**`,
-      `• Reference prices: ${refs}`,
-      `• Officer role: ${config.officerRoleId ? `<@&${config.officerRoleId}>` : "_unset_"}`,
-    ].join("\n")
+    embed({
+      title: "⚙️ Economy dials",
+      color: COLORS.gold,
+      fields: [
+        { name: "Labor rate", value: `$${config.laborRate} / unit`, inline: true },
+        { name: "Work / Rank", value: `${Math.round(config.workSplitPct * 100)} / ${Math.round((1 - config.workSplitPct) * 100)}`, inline: true },
+        { name: "Commission", value: `${Math.round(config.commissionPct * 100)}%`, inline: true },
+        { name: "Rank weights (I→V)", value: mults, inline: false },
+        { name: "Reference prices", value: refs, inline: false },
+        { name: "Officer role", value: config.officerRoleId ? `<@&${config.officerRoleId}>` : "_unset_", inline: false },
+      ],
+    })
   );
 }
 
@@ -619,7 +622,7 @@ function statusBody(
   recipes: any[],
   lines: any[],
   config: any
-): string {
+) {
   entries = liveEntries(entries);
   const line = lines.find((l) => l.id === job.lineId);
   const finalId = line?.finalItemId;
@@ -690,13 +693,15 @@ function statusBody(
         ? `✅ All ${finalName} sold or withdrawn.`
         : `_No ${finalName} produced yet._`;
 
-  return [
-    `📊 **${job.name}** _(${line?.name ?? job.lineId})_ · ${job.status}`,
-    members.length ? "**Contributors**\n" + members.join("\n") : "_No contributions yet._",
-    `**Pool** — deposited ${m(totalDep)} · made ${madeFinal} ${finalName} · sold ${soldQty} for ${m(revenue)}`,
-    `**On hand** — ${onHand.length ? onHand.join(" · ") : "nothing"}`,
-    recon,
-  ].join("\n");
+  return embed({
+    title: `📊 ${job.name} — ${line?.name ?? job.lineId} · ${job.status}`,
+    color: finalOnHand > 0.0001 ? COLORS.gold : madeFinal > 0 ? COLORS.green : COLORS.gray,
+    description: [recon, "", members.length ? "**Contributors**\n" + members.join("\n") : "_No contributions yet._"].join("\n"),
+    fields: [
+      { name: "Pool", value: `deposited ${m(totalDep)} · made ${madeFinal} ${finalName} · sold ${soldQty} for ${m(revenue)}` },
+      { name: "On hand", value: onHand.length ? onHand.join(" · ") : "nothing" },
+    ],
+  });
 }
 
 function bestLevel(roles: string[] | undefined, rankMap: Record<string, number>): number {
@@ -822,15 +827,18 @@ async function settleWork(i: any): Promise<string> {
     : `Pool: ${m(result.revenue)} − reimbursed ${m(result.reimbursed)} − commission ${m(result.commission)} → **${m(result.distributable)}** split ${Math.round(config.workSplitPct * 100)}/${Math.round((1 - config.workSplitPct) * 100)}.` +
       (result.tiesOut ? "" : " ⚠️ rounding mismatch.") +
       (unsold > 0.0001 ? `\n⚠️ ${+unsold.toFixed(1)} ${finalName} unsold — not in this payout.` : "");
-  const payout = [`💰 **SETTLEMENT — ${job.name}** _(${line.name})_ · ${m(result.revenue)}`, ...rows, foot].join("\n");
+  const payoutEmbed = embed({
+    title: `💰 Settlement — ${job.name} · ${m(result.revenue)}`,
+    color: result.loss ? COLORS.red : COLORS.green,
+    description: [...rows, "", foot].join("\n"),
+  });
 
   // Post the self-contained dispute record (ledger → status → payout) as the channel's
   // last messages, then archive read-only. Done before archiving so the channel is still writable.
   try {
-    await postChunks(job.channelId, "📕 **FINAL RECORD** — settled & archived for the books.");
     await postChunks(job.channelId, ledgerBody(job, entries, true));
-    await postChunks(job.channelId, statusBody(job, entries, catalog, recipes, lines, config));
-    await postChunks(job.channelId, payout);
+    await rest.postMessage(job.channelId, statusBody(job, entries, catalog, recipes, lines, config));
+    await rest.postMessage(job.channelId, payoutEmbed);
     const archiveCat = await ensureCategory(gid, config, "archiveCategoryId", "Archive");
     await rest.modifyChannel(job.channelId, {
       name: `💰-${slug(job.name) || "job"}-${BigInt(job.id).toString(36).slice(-5)}`,
@@ -869,18 +877,20 @@ async function handleMe(i: any) {
   const rankMap = Object.fromEntries(ranks.map((r) => [r.roleId, r.level]));
   const myLevel = bestLevel(i.member?.roles, rankMap);
   const m = (n: number) => `$${Math.round(n).toLocaleString()}`;
+  const fields = [
+    { name: "Rank", value: `Level ${myLevel} (${config.rankMultipliers[myLevel] ?? 1}×)`, inline: true },
+    { name: "Capital fronted", value: m(dep), inline: true },
+    { name: "Labor", value: m(lab), inline: true },
+  ];
+  if (soldCash) fields.push({ name: "Sold", value: `${m(soldCash)} → commission ${m(soldCash * config.commissionPct)}`, inline: true });
+  if (wd) fields.push({ name: "Withdrawn", value: `−${m(wd)}`, inline: true });
   return reply(
-    [
-      `🧍 **You on ${job.name}** _(${line?.name ?? job.lineId})_`,
-      `Rank: **Level ${myLevel}** (${config.rankMultipliers[myLevel] ?? 1}×)`,
-      `Capital fronted (reimbursed first): **${m(dep)}**`,
-      `Labor produced: **${m(lab)}**`,
-      soldCash ? `Sold: ${m(soldCash)} → commission **${m(soldCash * config.commissionPct)}**` : null,
-      wd ? `Withdrawn: −${m(wd)}` : null,
-      `_Exact take-home (work + rank shares of the pool) is computed at \`/settle\`._`,
-    ]
-      .filter(Boolean)
-      .join("\n")
+    embed({
+      title: `🧍 You on ${job.name}`,
+      color: COLORS.blue,
+      description: `_(${line?.name ?? job.lineId})_ — capital is reimbursed first; exact take-home is set at \`/settle\`.`,
+      fields,
+    })
   );
 }
 
