@@ -107,6 +107,10 @@ export async function handler(event: any) {
     return handleComponent(interaction);
   }
 
+  if (interaction.type === InteractionType.ModalSubmit) {
+    return handleModal(interaction);
+  }
+
   if (interaction.type === InteractionType.ApplicationCommand) {
     if (isDeferrable(interaction)) {
       try {
@@ -143,6 +147,8 @@ async function route(i: any) {
       return handleCatalog(i);
     case "rank":
       return handleRank(i);
+    case "recipe":
+      return handleRecipe(i);
     case "job":
       return handleJob(i);
     case "deposit":
@@ -325,7 +331,7 @@ async function handleAutocomplete(i: any) {
         }))
     );
   }
-  if (f.name === "product") {
+  if (f.name === "product" || f.name === "line") {
     const lines = await store.listLines(gid);
     return autocompleteResult(
       lines
@@ -627,6 +633,158 @@ async function handleRank(i: any) {
     .map((r) => `Level ${r.level} (${config.rankMultipliers[r.level]}×) — <@&${r.roleId}>`)
     .join("\n");
   return reply(embed({ title: "🏷️ Rank map", description: body, color: COLORS.gold }));
+}
+
+async function handleRecipe(i: any) {
+  const gid = guildId(i);
+  const config = await store.getConfig(gid);
+  if (!isOfficer(i, config)) return reply("⛔ Officers only.");
+  const sub = subcommand(i);
+
+  if (sub === "line") {
+    const name = option<string>(i, "name")!.trim();
+    const finalName = option<string>(i, "final")!.trim();
+    const price = option<number>(i, "price")!;
+    const lineId = slug(name);
+    const finalItemId = slug(finalName);
+    await store.putLine(gid, { id: lineId, name, finalItemId, referencePrice: price });
+    await store.putCatalogItem(gid, { id: finalItemId, name: finalName, kind: "final", value: 0, lineId });
+    return reply(
+      embed({
+        description: `✅ Product line **${name}** added (final: **${finalName}**, sells ~$${price}). Define its steps with \`/recipe build\`.`,
+        color: COLORS.green,
+      })
+    );
+  }
+
+  if (sub === "build") {
+    const lineId = option<string>(i, "line")!;
+    const line = (await store.listLines(gid)).find((l) => l.id === lineId);
+    if (!line) return reply("⚠️ Pick a product line (add one with `/recipe line`).");
+    return json({
+      type: 9, // MODAL
+      data: {
+        custom_id: `recipe:build:${lineId}`,
+        title: `Steps for ${line.name}`.slice(0, 45),
+        components: [
+          {
+            type: 1,
+            components: [
+              {
+                type: 4,
+                custom_id: "steps",
+                style: 2,
+                label: "One step per line",
+                required: true,
+                placeholder: "refine : 5 poppy + 2 acetone -> 4 powder\nwash * : 2 solvent + 2 powder -> 12-15 cocaine",
+              },
+            ],
+          },
+        ],
+      },
+    });
+  }
+
+  // list
+  const lines = await store.listLines(gid);
+  if (!lines.length) return reply("No product lines yet. Add one with `/recipe line`.");
+  const recipes = await store.listRecipes(gid);
+  const fields = lines.map((l) => ({
+    name: `${l.name} → ${l.finalItemId} ($${l.referencePrice})`,
+    value:
+      recipes
+        .filter((r) => r.lineId === l.id)
+        .map((r) => {
+          const ins = r.inputs.map((inp) => `${inp.qty} ${inp.itemId}`).join(" + ");
+          const y = typeof r.output.yield === "number" ? `${r.output.yield}` : `${r.output.yield[0]}-${r.output.yield[1]}`;
+          return `• ${r.step}: ${ins} → ${y} ${r.output.itemId}`;
+        })
+        .join("\n") || "_no steps yet_",
+  }));
+  return reply(embed({ title: "🧪 Product lines", color: COLORS.gold, fields }));
+}
+
+async function handleModal(i: any) {
+  const cid: string = i.data?.custom_id ?? "";
+  if (!cid.startsWith("recipe:build:")) return json({ type: 6 });
+  const gid = guildId(i);
+  const config = await store.getConfig(gid);
+  if (!isOfficer(i, config)) return reply("⛔ Officers only.");
+  const lineId = cid.slice("recipe:build:".length);
+  const line = (await store.listLines(gid)).find((l) => l.id === lineId);
+  if (!line) return reply("⚠️ That product line is gone.");
+
+  const text: string = i.data.components?.[0]?.components?.[0]?.value ?? "";
+  interface ParsedStep {
+    step: string;
+    canFail: boolean;
+    inputs: { itemId: string; name: string; qty: number }[];
+    output: { itemId: string; name: string; yield: number | [number, number] };
+  }
+  const steps: ParsedStep[] = [];
+  const errors: string[] = [];
+  for (const raw of text.split("\n").map((s) => s.trim()).filter(Boolean)) {
+    const m = raw.match(/^([^:]+):(.+?)->(.+)$/);
+    if (!m) { errors.push(raw); continue; }
+    const canFail = m[1].includes("*");
+    const step = slug(m[1].replace(/\*/g, ""));
+    const inputs = m[2].split("+").map((p) => p.trim()).filter(Boolean).map((p) => {
+      const mm = p.match(/^(\d+(?:\.\d+)?)\s+(.+)$/);
+      return mm ? { itemId: slug(mm[2]), name: mm[2].trim(), qty: Number(mm[1]) } : null;
+    });
+    const outM = m[3].trim().match(/^(\d+)(?:-(\d+))?\s+(.+)$/);
+    if (!step || inputs.some((x) => !x) || !outM) { errors.push(raw); continue; }
+    steps.push({
+      step,
+      canFail,
+      inputs: inputs as { itemId: string; name: string; qty: number }[],
+      output: { itemId: slug(outM[3]), name: outM[3].trim(), yield: outM[2] ? [Number(outM[1]), Number(outM[2])] : Number(outM[1]) },
+    });
+  }
+  if (!steps.length) {
+    return reply("⚠️ Couldn't parse any steps. Format: `step: 5 poppy + 2 acetone -> 4 powder`");
+  }
+
+  const outputs = new Set(steps.map((s) => s.output.itemId));
+  const existing = new Set((await store.listCatalog(gid)).map((c) => c.id));
+  const newBase: string[] = [];
+  const ensureItem = async (id: string, name: string, kind: "base" | "intermediate" | "final") => {
+    if (existing.has(id)) return;
+    await store.putCatalogItem(
+      gid,
+      kind === "base"
+        ? { id, name, kind, value: 0, source: "bought", lineId }
+        : { id, name, kind, value: 0, lineId }
+    );
+    existing.add(id);
+    if (kind === "base") newBase.push(name);
+  };
+  for (const s of steps) {
+    for (const inp of s.inputs) await ensureItem(inp.itemId, inp.name, outputs.has(inp.itemId) ? "intermediate" : "base");
+    await ensureItem(s.output.itemId, s.output.name, s.output.itemId === line.finalItemId ? "final" : "intermediate");
+  }
+  for (const s of steps) {
+    await store.putRecipe(gid, {
+      lineId,
+      step: s.step,
+      inputs: s.inputs.map((x) => ({ itemId: x.itemId, qty: x.qty })),
+      output: { itemId: s.output.itemId, yield: s.output.yield },
+      canFail: s.canFail,
+    });
+  }
+  return reply(
+    embed({
+      title: "🧪 Recipe saved",
+      color: COLORS.green,
+      description: [
+        `**${line.name}** — ${steps.length} step(s) saved.`,
+        newBase.length ? `New base items to price (\`/catalog set\`): ${newBase.join(", ")}` : "",
+        errors.length ? `⚠️ Skipped ${errors.length} unparseable line(s).` : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    })
+  );
 }
 
 // ---- jobs & ledger (Phase 2) ----

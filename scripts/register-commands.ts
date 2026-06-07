@@ -267,6 +267,30 @@ const commands = [
       { type: 3, name: "entry", description: "Pick the entry to void", required: true, autocomplete: true },
     ],
   },
+  {
+    name: "recipe",
+    description: "Define product lines & their chains (officers only)",
+    type: 1,
+    options: [
+      {
+        type: 1,
+        name: "line",
+        description: "Add a new product line",
+        options: [
+          { type: 3, name: "name", description: "Line name (e.g. Cocaine)", required: true },
+          { type: 3, name: "final", description: "Final product name (e.g. Brick)", required: true },
+          { type: 10, name: "price", description: "Reference sell price ($)", required: true },
+        ],
+      },
+      {
+        type: 1,
+        name: "build",
+        description: "Define a line's steps (opens a form)",
+        options: [{ type: 3, name: "line", description: "Product line", required: true, autocomplete: true }],
+      },
+      { type: 1, name: "list", description: "List product lines & their steps" },
+    ],
+  },
 ];
 
 async function main() {
