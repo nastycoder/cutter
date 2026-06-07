@@ -574,8 +574,20 @@ async function handleCatalog(i: any) {
     const id = option<string>(i, "item")!;
     const item = await store.getCatalogItem(gid, id);
     if (!item) return reply("⚠️ Pick an existing item from the list.");
+    const used = (await store.listRecipes(gid))
+      .filter((r) => r.output.itemId === id || r.inputs.some((x) => x.itemId === id))
+      .map((r) => `${r.lineId}/${r.step}`);
     await store.deleteCatalogItem(gid, id);
-    return reply(embed({ description: `🗑️ Removed **${item.name}**.`, color: COLORS.gray }));
+    return reply(
+      embed({
+        description:
+          `🗑️ Removed **${item.name}**.` +
+          (used.length
+            ? `\n⚠️ Still referenced by recipe step(s): ${used.join(", ")} — fix them with \`/recipe build\` or they'll value it at $0.`
+            : ""),
+        color: COLORS.gray,
+      })
+    );
   }
 
   // list
@@ -688,6 +700,19 @@ async function handleRecipe(i: any) {
     const lineId = option<string>(i, "line")!;
     const line = (await store.listLines(gid)).find((l) => l.id === lineId);
     if (!line) return reply("⚠️ Pick a product line (add one with `/recipe line`).");
+    // Pre-fill with the current chain so this doubles as an editor: tweak a qty,
+    // add a step, or delete a line to drop that step — saving replaces the chain.
+    const [recipes, catalog] = await Promise.all([store.listRecipes(gid), store.listCatalog(gid)]);
+    const nameOf = (id: string) => catalog.find((c) => c.id === id)?.name ?? id;
+    const prefill = recipes
+      .filter((r) => r.lineId === lineId)
+      .map((r) => {
+        const y = typeof r.output.yield === "number" ? `${r.output.yield}` : `${r.output.yield[0]}-${r.output.yield[1]}`;
+        const ins = r.inputs.map((x) => `${x.qty} ${nameOf(x.itemId)}`).join(" + ");
+        return `${r.step}${r.canFail ? " *" : ""} : ${ins} -> ${y} ${nameOf(r.output.itemId)}`;
+      })
+      .join("\n")
+      .slice(0, 4000);
     return json({
       type: 9, // MODAL
       data: {
@@ -701,8 +726,9 @@ async function handleRecipe(i: any) {
                 type: 4,
                 custom_id: "steps",
                 style: 2,
-                label: "One step per line",
+                label: "One per line — saving replaces the chain",
                 required: true,
+                value: prefill || undefined,
                 placeholder: "refine : 5 poppy + 2 acetone -> 4 powder\nwash * : 2 solvent + 2 powder -> 12-15 cocaine",
               },
             ],
@@ -710,6 +736,21 @@ async function handleRecipe(i: any) {
         ],
       },
     });
+  }
+
+  if (sub === "remove") {
+    const lineId = option<string>(i, "line")!;
+    const line = (await store.listLines(gid)).find((l) => l.id === lineId);
+    if (!line) return reply("⚠️ Pick a product line to remove.");
+    const steps = (await store.listRecipes(gid)).filter((r) => r.lineId === lineId);
+    for (const r of steps) await store.deleteRecipe(gid, lineId, r.step);
+    await store.deleteLine(gid, lineId);
+    return reply(
+      embed({
+        description: `🗑️ Removed product line **${line.name}** and its ${steps.length} step(s). Its catalog items remain — clear any you no longer need with \`/catalog remove\`.`,
+        color: COLORS.gray,
+      })
+    );
   }
 
   // list
@@ -744,7 +785,7 @@ async function handleModal(i: any) {
   // Resolve referenced items against what already exists so a recipe that builds
   // on another (e.g. crack uses cocaine) links to the canonical item instead of
   // minting a near-duplicate. Match by id OR by the slug of the existing name.
-  const catalog = await store.listCatalog(gid);
+  const [catalog, allRecipes] = await Promise.all([store.listCatalog(gid), store.listRecipes(gid)]);
   const byId = new Map(catalog.map((c) => [c.id, c]));
   const nameIndex = new Map<string, string>();
   for (const c of catalog) {
@@ -818,6 +859,13 @@ async function handleModal(i: any) {
       canFail: s.canFail,
     });
   }
+  // Replace semantics: drop any prior step of this line that's no longer present.
+  const keep = new Set(steps.map((s) => s.step));
+  const removed: string[] = [];
+  for (const r of allRecipes.filter((r) => r.lineId === lineId && !keep.has(r.step))) {
+    await store.deleteRecipe(gid, lineId, r.step);
+    removed.push(r.step);
+  }
   return reply(
     embed({
       title: "🧪 Recipe saved",
@@ -826,6 +874,7 @@ async function handleModal(i: any) {
         `**${line.name}** — ${steps.length} step(s) saved.`,
         linked.size ? `🔗 Builds on existing: ${[...linked].join(", ")}` : "",
         newBase.length ? `New base items to price (\`/catalog set\`): ${newBase.join(", ")}` : "",
+        removed.length ? `🗑️ Removed step(s): ${removed.join(", ")}` : "",
         errors.length ? `⚠️ Skipped ${errors.length} unparseable line(s).` : "",
       ]
         .filter(Boolean)

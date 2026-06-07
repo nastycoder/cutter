@@ -290,6 +290,12 @@ const commands = [
         options: [{ type: 3, name: "line", description: "Product line", required: true, autocomplete: true }],
       },
       { type: 1, name: "list", description: "List product lines & their steps" },
+      {
+        type: 1,
+        name: "remove",
+        description: "Delete a product line and its steps (officers only)",
+        options: [{ type: 3, name: "line", description: "Product line", required: true, autocomplete: true }],
+      },
     ],
   },
 ];

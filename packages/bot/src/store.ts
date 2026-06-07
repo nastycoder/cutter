@@ -42,6 +42,9 @@ export async function listLines(gid: string): Promise<ProductLine[]> {
 export async function putLine(gid: string, line: ProductLine): Promise<void> {
   await db.putItem({ PK: db.gpk(gid), SK: `LINE#${line.id}`, ...line });
 }
+export async function deleteLine(gid: string, lineId: string): Promise<void> {
+  await db.deleteItem(db.gpk(gid), `LINE#${lineId}`);
+}
 
 export async function listCatalog(gid: string): Promise<CatalogItem[]> {
   return db.queryPrefix<CatalogItem>(db.gpk(gid), "ITEM#");
@@ -61,6 +64,9 @@ export async function putRecipe(gid: string, r: RecipeStep): Promise<void> {
 }
 export async function listRecipes(gid: string): Promise<RecipeStep[]> {
   return db.queryPrefix<RecipeStep>(db.gpk(gid), "RECIPE#");
+}
+export async function deleteRecipe(gid: string, lineId: string, step: string): Promise<void> {
+  await db.deleteItem(db.gpk(gid), `RECIPE#${lineId}#${step}`);
 }
 
 export async function putRank(gid: string, roleId: string, level: number): Promise<void> {
