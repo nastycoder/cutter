@@ -3,7 +3,7 @@ import { getSecret } from "./secret";
 
 const API = "https://discord.com/api/v10";
 
-async function dapi(path: string, init: RequestInit = {}): Promise<any> {
+async function dapi(path: string, init: RequestInit = {}, attempt = 0): Promise<any> {
   const { botToken } = await getSecret();
   const res = await fetch(`${API}${path}`, {
     ...init,
@@ -13,6 +13,11 @@ async function dapi(path: string, init: RequestInit = {}): Promise<any> {
       ...(init.headers as Record<string, string> | undefined),
     },
   });
+  if (res.status === 429 && attempt < 5) {
+    const body: any = await res.clone().json().catch(() => ({}));
+    await new Promise((r) => setTimeout(r, (body.retry_after ?? 1) * 1000 + 250));
+    return dapi(path, init, attempt + 1);
+  }
   if (!res.ok) {
     throw new Error(`Discord ${init.method ?? "GET"} ${path}: ${res.status} ${await res.text()}`);
   }

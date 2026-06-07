@@ -835,10 +835,16 @@ async function settleWork(i: any): Promise<string> {
 
   // Post the self-contained dispute record (ledger → status → payout) as the channel's
   // last messages, then archive read-only. Done before archiving so the channel is still writable.
+  // record posting is best-effort (must run while the channel is still writable)
   try {
     await postChunks(job.channelId, ledgerBody(job, entries, true));
     await rest.postMessage(job.channelId, statusBody(job, entries, catalog, recipes, lines, config));
     await rest.postMessage(job.channelId, payoutEmbed);
+  } catch (e) {
+    console.error("settle record post failed", e);
+  }
+  // archive is its own step so a record-post failure never skips it
+  try {
     const archiveCat = await ensureCategory(gid, config, "archiveCategoryId", "Archive");
     await rest.modifyChannel(job.channelId, {
       name: `💰-${slug(job.name) || "job"}-${BigInt(job.id).toString(36).slice(-5)}`,
@@ -846,7 +852,7 @@ async function settleWork(i: any): Promise<string> {
       permission_overwrites: [{ id: gid, type: 0, deny: "2048" }],
     });
   } catch (e) {
-    console.error("settle record/archive failed", e);
+    console.error("settle archive failed", e);
   }
 
   return `✅ Settled **${job.name}** — ${m(result.revenue)} paid out. Full record posted to the channel; archived read-only.`;

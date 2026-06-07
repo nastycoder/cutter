@@ -37,11 +37,15 @@ export function embed(opts: {
   return {
     embeds: [
       {
-        title: opts.title,
-        description: opts.description,
+        title: opts.title?.slice(0, 256),
+        description: opts.description?.slice(0, 4096),
         color: opts.color ?? COLORS.gold,
-        fields: opts.fields,
-        footer: opts.footer ? { text: opts.footer } : undefined,
+        fields: opts.fields?.slice(0, 25).map((f) => ({
+          name: f.name.slice(0, 256),
+          value: (f.value || "—").slice(0, 1024),
+          inline: f.inline,
+        })),
+        footer: opts.footer ? { text: opts.footer.slice(0, 2048) } : undefined,
       },
     ],
   };
