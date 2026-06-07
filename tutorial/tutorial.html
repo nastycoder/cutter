@@ -19,7 +19,7 @@
   }
   body{ font-family:'Barlow Condensed','Oswald',sans-serif; color:var(--cream); }
   .slide{
-    width:1280px; height:720px; position:relative; overflow:hidden; padding:64px 80px;
+    width:1280px; height:720px; position:relative; overflow:hidden; padding:60px 80px;
     display:flex; flex-direction:column;
     background:
       radial-gradient(900px 600px at 50% -10%, rgba(232,184,75,.16), transparent 60%),
@@ -38,13 +38,13 @@
   .lead{ font-size:26px; color:#cfc7b6; line-height:1.45; }
   .lead b{ color:var(--gold-br); }
   ul{ list-style:none; }
-  li{ font-size:24px; color:var(--cream); line-height:1.5; padding:7px 0; padding-left:34px; position:relative; }
+  li{ font-size:23px; color:var(--cream); line-height:1.45; padding:6px 0; padding-left:34px; position:relative; }
   li::before{ content:"›"; position:absolute; left:6px; color:var(--gold); font-family:'Anton'; font-size:24px; }
   li b{ color:var(--white); }
   code,.cmd{ font-family:'Barlow Condensed'; font-weight:600; background:rgba(232,184,75,.12); border:1px solid rgba(232,184,75,.3);
-    color:var(--gold-br); border-radius:6px; padding:2px 9px; font-size:21px; }
+    color:var(--gold-br); border-radius:6px; padding:2px 9px; font-size:20px; }
   .foot{ margin-top:auto; display:flex; justify-content:space-between; font-family:'Barlow Condensed'; font-weight:600;
-    letter-spacing:.28em; font-size:13px; color:var(--muted); padding-top:20px; }
+    letter-spacing:.28em; font-size:13px; color:var(--muted); padding-top:18px; }
   .foot b{ color:var(--gold-dp); }
 
   /* flow */
@@ -61,12 +61,48 @@
   .card .h .num{ font-family:'Teko'; font-size:30px; color:var(--white); margin-right:6px; }
   .card p{ font-size:17px; color:var(--cream); line-height:1.4; }
 
-  .chipwrap{ display:flex; flex-wrap:wrap; gap:12px; margin-top:26px; }
   .ranktable{ width:100%; border-collapse:collapse; margin-top:24px; }
   .ranktable td{ padding:9px 14px; border-bottom:1px solid var(--line); font-size:22px; }
   .ranktable .lvl{ font-family:'Anton'; color:var(--gold-br); width:60px; }
   .ranktable .w{ font-family:'Teko'; font-weight:600; font-size:30px; color:var(--white); text-align:right; }
   .em{ width:120px; height:120px; }
+
+  /* worked-example "chat" rows */
+  .chat{ margin-top:14px; display:flex; flex-direction:column; gap:7px; }
+  .chat .row{ display:flex; align-items:baseline; gap:12px; background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--gold); border-radius:7px; padding:8px 14px; }
+  .chat .who{ font-family:'Anton'; font-size:15px; color:var(--gold-br); min-width:62px; }
+  .chat .cmd2{ font-family:'Barlow Condensed'; font-weight:600; color:var(--white); font-size:18px; }
+  .chat .cmd2 b{ color:var(--gold-br); }
+  .chat .eff{ margin-left:auto; font-size:15px; color:var(--muted); text-align:right; }
+
+  /* command-reference table */
+  .cmdtable{ width:100%; border-collapse:collapse; margin-top:14px; }
+  .cmdtable td{ padding:6px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+  .cmdtable .c{ font-family:'Barlow Condensed'; font-weight:600; color:var(--gold-br); font-size:15px; white-space:nowrap; }
+  .cmdtable .d{ font-size:15.5px; color:var(--cream); line-height:1.3; }
+  .cmdtable .d b{ color:var(--white); }
+  .grp{ font-family:'Anton'; font-size:15px; color:var(--gold); letter-spacing:.04em; padding-top:14px !important; }
+
+  /* settlement pool + payouts */
+  .pool{ display:flex; gap:9px; margin-top:18px; align-items:stretch; }
+  .pool .b{ flex:1; background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:13px 10px; text-align:center; }
+  .pool .b .lab{ font-size:12px; color:var(--muted); letter-spacing:.08em; }
+  .pool .b .v{ font-family:'Teko'; font-weight:600; font-size:29px; color:var(--white); margin-top:3px; line-height:1; }
+  .pool .b.g{ border-color:var(--gold-dp); } .pool .b.g .v{ color:var(--gold-br); }
+  .pool .b.grn .v{ color:var(--green); }
+  .pool .op{ align-self:center; font-family:'Anton'; color:var(--gold); font-size:22px; }
+
+  .paytable{ width:100%; border-collapse:collapse; margin-top:14px; }
+  .paytable th{ font-family:'Barlow Condensed'; font-weight:600; color:var(--muted); font-size:14px; text-align:right; padding:6px 14px; letter-spacing:.06em; border-bottom:1px solid var(--line); }
+  .paytable th:first-child,.paytable th:nth-child(2){ text-align:left; }
+  .paytable td{ padding:7px 14px; border-bottom:1px solid var(--line); font-size:20px; text-align:right; font-family:'Teko'; font-weight:500; color:var(--cream); }
+  .paytable td:first-child{ text-align:left; font-family:'Anton'; font-size:17px; color:var(--gold-br); }
+  .paytable td:nth-child(2){ text-align:left; font-family:'Barlow Condensed'; font-weight:600; font-size:16px; color:var(--muted); }
+  .paytable .net{ color:var(--green); font-weight:600; }
+  .paytable .dim{ color:var(--muted); }
+  .paytable tr.tot td{ border-top:2px solid var(--gold-dp); border-bottom:none; color:var(--white); }
+  .note{ margin-top:12px; font-size:16px; color:var(--muted); }
+  .note b{ color:var(--gold-dp); }
 </style>
 </head>
 <body>
@@ -89,7 +125,7 @@
   <div class="kicker">THE BASICS</div>
   <h1 style="font-size:64px;margin-top:8px;">WHAT IS CUTTER?</h1>
   <p class="lead" style="margin-top:18px;max-width:1000px;">A Discord bot that <b>tracks every operation</b> — who farmed, funded, cooked, and sold — and <b>splits the haul fair, automatically.</b></p>
-  <ul style="margin-top:18px;">
+  <ul style="margin-top:16px;">
     <li>Log the whole op in its own channel — deposits, cooks, and sales</li>
     <li>Settle pays out by <b>capital, work, rank, and selling risk</b> — to the dollar</li>
     <li>Every payout is <b>on the record</b> in a read-only archive — no disputes</li>
@@ -97,37 +133,73 @@
   <div class="foot"><span>CUTTER · CREW GUIDE</span><span>FOR THE <b>FAMILY</b></span></div>
 </div></section>
 
-<!-- 3 · SETUP 1 -->
+<!-- 3 · GET PAID -->
+<section class="slide"><div class="z">
+  <div class="kicker">THE SPLIT</div>
+  <h1 style="font-size:60px;margin-top:8px;">FOUR WAYS TO GET PAID</h1>
+  <div class="cards">
+    <div class="card"><div class="h"><span class="num">①</span>Capital back</div><p>Front materials or cash — reimbursed in full <b>before</b> any profit.</p></div>
+    <div class="card"><div class="h"><span class="num">②</span>Work · 70%</div><p>Farm, fund, or cook. Paid by what you put in.</p></div>
+    <div class="card"><div class="h"><span class="num">③</span>Rank · 30%</div><p>Your level in the chain, read from your Discord role.</p></div>
+    <div class="card"><div class="h"><span class="num">④</span>Commission</div><p>Hazard pay for moving product — you hold the heat.</p></div>
+  </div>
+  <p class="lead" style="margin-top:26px;font-size:21px;color:var(--muted);">Big take-home numbers are mostly your own capital coming back — the payout shows capital vs. earned separately.</p>
+  <div class="foot"><span>CUTTER · CREW GUIDE</span><span>PAYOUTS</span></div>
+</div></section>
+
+<!-- 4 · THE WATERFALL -->
+<section class="slide"><div class="z">
+  <div class="kicker">HOW SETTLE THINKS</div>
+  <h1 style="font-size:58px;margin-top:8px;">THE SETTLEMENT WATERFALL</h1>
+  <p class="lead" style="margin-top:12px;font-size:22px;">Every <span class="cmd">/settle</span> runs the same order, so the math always ties out:</p>
+  <div class="pool" style="margin-top:24px;">
+    <div class="b g"><div class="lab">REVENUE</div><div class="v">sales</div></div>
+    <div class="op">−</div>
+    <div class="b"><div class="lab">CAPITAL</div><div class="v">reimbursed</div></div>
+    <div class="op">−</div>
+    <div class="b"><div class="lab">COMMISSION</div><div class="v">to sellers</div></div>
+    <div class="op">=</div>
+    <div class="b grn"><div class="lab">DISTRIBUTABLE</div><div class="v">profit</div></div>
+  </div>
+  <ul style="margin-top:22px;">
+    <li><b>Capital first</b> — everyone's fronted materials &amp; cash come back before profit is touched</li>
+    <li>Profit splits <b>70% Work</b> (by what you contributed) and <b>30% Rank</b> (by your level's weight)</li>
+    <li>If a job loses money, no commission — revenue reimburses capital pro-rata, nobody goes negative</li>
+  </ul>
+  <div class="foot"><span>CUTTER · CREW GUIDE</span><span>THE WATERFALL</span></div>
+</div></section>
+
+<!-- 5 · SETUP 1 -->
 <section class="slide"><div class="z">
   <div class="step-tag">SERVER OWNER · STEP 1</div>
   <h1 style="font-size:60px;margin-top:14px;">ADD CUTTER TO YOUR SERVER</h1>
   <ul style="margin-top:14px;">
     <li>Open the invite link, pick your server, hit <b>Authorize</b></li>
-    <li>Grant <b>Manage Roles</b> + <b>Manage Channels</b> — Cutter reads ranks and creates op channels</li>
+    <li>Grant <b>Manage Roles</b>, <b>Manage Channels</b> &amp; <b>Attach Files</b> — Cutter reads ranks, builds op channels, and posts this deck</li>
     <li>The interactions endpoint is wired once by your admin — already done for this bot</li>
   </ul>
-  <div style="margin-top:24px;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:16px 20px;">
+  <div style="margin-top:22px;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:16px 20px;">
     <div style="color:var(--muted);font-size:15px;letter-spacing:.16em;">INVITE LINK</div>
-    <div style="font-family:'Barlow Condensed';font-weight:600;color:var(--gold-br);font-size:19px;word-break:break-all;margin-top:4px;">discord.com/oauth2/authorize?client_id=1512639038249504768&amp;scope=bot+applications.commands&amp;permissions=268435472</div>
+    <div style="font-family:'Barlow Condensed';font-weight:600;color:var(--gold-br);font-size:19px;word-break:break-all;margin-top:4px;">discord.com/oauth2/authorize?client_id=1512639038249504768&amp;scope=bot+applications.commands&amp;permissions=268553232</div>
   </div>
   <div class="foot"><span>CUTTER · SETUP</span><span>STEP <b>1 / 2</b></span></div>
 </div></section>
 
-<!-- 4 · SETUP 2 -->
+<!-- 6 · SETUP 2 -->
 <section class="slide"><div class="z">
   <div class="step-tag">SERVER OWNER · STEP 2</div>
   <h1 style="font-size:60px;margin-top:14px;">CONFIGURE THE CREW</h1>
-  <ul style="margin-top:14px;">
-    <li><span class="cmd">/setup officer:@&lt;role&gt;</span> — seeds the Honey line &amp; sets who can run privileged commands <i>(needs Manage Server)</i></li>
+  <ul style="margin-top:12px;">
+    <li><span class="cmd">/setup officer:@&lt;role&gt;</span> — seeds the Honey line, sets who runs privileged commands, and builds the read-only <b>#cutter-guide</b> with this deck <i>(needs Manage Server)</i></li>
     <li><span class="cmd">/rank map</span> — tie each Discord role to a level <b>I–V</b> (Leadership → Associates)</li>
-    <li><span class="cmd">/config panel</span> &amp; <span class="cmd">/catalog</span> — tune labor rate, the 70/30 split, commission, weights &amp; prices</li>
+    <li><span class="cmd">/config panel</span> &amp; <span class="cmd">/catalog</span> — tune labor rate, the 70/30 split, commission, farm margin &amp; prices</li>
     <li><span class="cmd">/recipe</span> — add cocaine / moonshine / meth once you know the formulas</li>
   </ul>
-  <p class="lead" style="margin-top:18px;font-size:22px;color:var(--green);">That's it — the crew can start running ops.</p>
+  <p class="lead" style="margin-top:16px;font-size:22px;color:var(--green);">That's it — the crew can start running ops.</p>
   <div class="foot"><span>CUTTER · SETUP</span><span>STEP <b>2 / 2</b></span></div>
 </div></section>
 
-<!-- 5 · RUNNING AN OP -->
+<!-- 7 · RUNNING AN OP -->
 <section class="slide"><div class="z">
   <div class="kicker">FOR EVERYONE</div>
   <h1 style="font-size:60px;margin-top:8px;">RUNNING AN OP</h1>
@@ -142,46 +214,121 @@
     <div class="arrow">→</div>
     <div class="step" style="border-top-color:var(--green);"><div class="n" style="color:var(--green)">5</div><div class="t">/settle</div><div class="d">Pays out &amp; archives the record</div></div>
   </div>
-  <p class="lead" style="margin-top:30px;font-size:22px;">Run every command <b>in the op's channel</b> — no IDs to type. Each op stays isolated, even two of the same product.</p>
+  <p class="lead" style="margin-top:28px;font-size:22px;">Run every command <b>in the op's channel</b> — no IDs to type. Each op stays isolated, even two of the same product.</p>
   <div class="foot"><span>CUTTER · CREW GUIDE</span><span>THE FLOW</span></div>
 </div></section>
 
-<!-- 6 · COMMANDS -->
+<!-- 8 · EXAMPLE INTRO -->
 <section class="slide"><div class="z">
-  <div class="kicker">CHEAT SHEET</div>
-  <h1 style="font-size:60px;margin-top:8px;">YOUR COMMANDS</h1>
-  <div class="chipwrap">
-    <span class="cmd">/deposit item: qty:</span><span class="cmd">/deposit cash:</span>
-    <span class="cmd">/process step: made:</span><span class="cmd">/withdraw …</span>
-    <span class="cmd">/sale qty: cash:</span><span class="cmd">/status</span>
-    <span class="cmd">/ledger</span><span class="cmd">/me</span>
+  <div class="step-tag" style="background:linear-gradient(90deg,var(--green),#2e7d4f);">LIVE EXAMPLE</div>
+  <h1 style="font-size:56px;margin-top:14px;">ONE JOB, START TO PAYOUT</h1>
+  <p class="lead" style="margin-top:10px;font-size:22px;">Five hands run a Honey batch. We'll follow every command, then watch <span class="cmd">/settle</span> tie <b>$220,000</b> out to the dollar.</p>
+  <table class="paytable" style="margin-top:16px;">
+    <tr><th>WHO</th><th>ROLE</th><th>RANK</th><th>WHAT THEY DO</th></tr>
+    <tr><td>Marco</td><td>Underboss</td><td class="dim">I · 5×</td><td style="text-align:left;font-family:'Barlow Condensed';font-weight:600;color:var(--cream);">Funds the bottles — vials &amp; syringes</td></tr>
+    <tr><td>Rico</td><td>Dealer</td><td class="dim">III · 3×</td><td style="text-align:left;font-family:'Barlow Condensed';font-weight:600;color:var(--cream);">Funds chems, then sells the product</td></tr>
+    <tr><td>Vinny</td><td>Supplier</td><td class="dim">III · 3×</td><td style="text-align:left;font-family:'Barlow Condensed';font-weight:600;color:var(--cream);">Farms the poppy &amp; acetone</td></tr>
+    <tr><td>Tony</td><td>Goon</td><td class="dim">IV · 2×</td><td style="text-align:left;font-family:'Barlow Condensed';font-weight:600;color:var(--cream);">Refines, cuts &amp; bottles</td></tr>
+    <tr><td>Lou</td><td>Dealer</td><td class="dim">III · 3×</td><td style="text-align:left;font-family:'Barlow Condensed';font-weight:600;color:var(--cream);">Doses the final 1,700 bags</td></tr>
+  </table>
+  <div class="foot"><span>CUTTER · LIVE EXAMPLE</span><span>THE CREW</span></div>
+</div></section>
+
+<!-- 9 · EXAMPLE DEPOSITS -->
+<section class="slide"><div class="z">
+  <div class="kicker">LIVE EXAMPLE · ① FRONT THE CAPITAL</div>
+  <h1 style="font-size:52px;margin-top:8px;">DEPOSITS</h1>
+  <p class="lead" style="margin-top:8px;font-size:20px;">Each hand logs what they put in. Cutter values it from the catalog — <b>that's their capital, reimbursed first.</b></p>
+  <div class="chat">
+    <div class="row"><span class="who">Rico</span><span class="cmd2">/job open <b>name:</b>Sat Cook <b>product:</b>Honey</span><span class="eff">opens <b>#sat-cook</b></span></div>
+    <div class="row"><span class="who">Marco</span><span class="cmd2">/deposit <b>item:</b>Vial <b>qty:</b>960</span><span class="eff">+ $48,000</span></div>
+    <div class="row"><span class="who">Marco</span><span class="cmd2">/deposit <b>item:</b>Syringe <b>qty:</b>900</span><span class="eff">+ $45,000</span></div>
+    <div class="row"><span class="who">Rico</span><span class="cmd2">/deposit <b>item:</b>Baking soda <b>qty:</b>480</span><span class="eff">+ $24,000</span></div>
+    <div class="row"><span class="who">Rico</span><span class="cmd2">/deposit <b>item:</b>Cleaning kit <b>qty:</b>110</span><span class="eff">+ $5,500</span></div>
+    <div class="row"><span class="who">Vinny</span><span class="cmd2">/deposit <b>item:</b>Poppy <b>qty:</b>600</span><span class="eff">+ $12,000</span></div>
+    <div class="row"><span class="who">Vinny</span><span class="cmd2">/deposit <b>item:</b>Acetone <b>qty:</b>240</span><span class="eff">+ $7,200</span></div>
   </div>
-  <ul style="margin-top:30px;">
-    <li><b>/status</b> — who's put in what, and what's still unsold</li>
-    <li><b>/ledger</b> — the full blow-by-blow history</li>
-    <li><b>/me</b> — your own standing in this op</li>
+  <div class="note">Capital so far — Marco <b>$93,000</b> · Rico <b>$29,500</b> · Vinny <b>$19,200</b>. <span style="color:var(--muted)">(Prices: bought items $50, poppy $20, acetone $30.)</span></div>
+  <div class="foot"><span>CUTTER · LIVE EXAMPLE</span><span>DEPOSITS</span></div>
+</div></section>
+
+<!-- 10 · EXAMPLE PROCESS + SALE -->
+<section class="slide"><div class="z">
+  <div class="kicker">LIVE EXAMPLE · ② COOK &amp; ③ SELL</div>
+  <h1 style="font-size:52px;margin-top:8px;">PROCESS &amp; SALE</h1>
+  <p class="lead" style="margin-top:8px;font-size:20px;">Cooks log what they <b>made</b> at each step — that's their <b>labor</b> (units × $25). Then the product moves.</p>
+  <div class="chat">
+    <div class="row"><span class="who">Tony</span><span class="cmd2">/process <b>step:</b>refine <b>made:</b>480</span><span class="eff">poppy + acetone → powder</span></div>
+    <div class="row"><span class="who">Tony</span><span class="cmd2">/process <b>step:</b>cut <b>made:</b>960</span><span class="eff">powder + baking → cut</span></div>
+    <div class="row"><span class="who">Tony</span><span class="cmd2">/process <b>step:</b>bottle <b>made:</b>900</span><span class="eff">→ vial heroin</span></div>
+    <div class="row"><span class="who">Lou</span><span class="cmd2">/process <b>step:</b>dose <b>made:</b>1700</span><span class="eff">→ 1,700 Honey</span></div>
+    <div class="row" style="border-left-color:var(--green);"><span class="who">Rico</span><span class="cmd2">/sale <b>qty:</b>1700 <b>cash:</b>220000</span><span class="eff" style="color:var(--green)">revenue $220,000</span></div>
+  </div>
+  <div class="note">Labor — Tony 2,340 units → <b>$58,500</b> · Lou 1,700 → <b>$42,500</b>. Rico sold it, so he earns <b>8% commission = $17,600</b>.</div>
+  <div class="foot"><span>CUTTER · LIVE EXAMPLE</span><span>COOK &amp; SELL</span></div>
+</div></section>
+
+<!-- 11 · EXAMPLE STATUS -->
+<section class="slide"><div class="z">
+  <div class="kicker">LIVE EXAMPLE · CHECK BEFORE YOU SETTLE</div>
+  <h1 style="font-size:52px;margin-top:8px;">/status</h1>
+  <p class="lead" style="margin-top:8px;font-size:21px;">Anyone can pull <span class="cmd">/status</span> to see contributions and whether the books reconcile — <b>all 1,700 bags sold, nothing left on the shelf.</b></p>
+  <div class="pool" style="margin-top:22px;">
+    <div class="b"><div class="lab">CAPITAL IN</div><div class="v">$141,700</div></div>
+    <div class="b"><div class="lab">LABOR LOGGED</div><div class="v">$101,000</div></div>
+    <div class="b grn"><div class="lab">REVENUE</div><div class="v">$220,000</div></div>
+    <div class="b"><div class="lab">ON HAND</div><div class="v">0 bags</div></div>
+  </div>
+  <ul style="margin-top:24px;">
+    <li><span class="cmd">/me</span> shows your own line — what you fronted, cooked, and stand to clear</li>
+    <li><span class="cmd">/ledger</span> is the full blow-by-blow if a number looks off</li>
+    <li>See product made but not sold? <span class="cmd">/status</span> flags it before you pay out</li>
   </ul>
-  <div class="foot"><span>CUTTER · CREW GUIDE</span><span>COMMANDS</span></div>
+  <div class="foot"><span>CUTTER · LIVE EXAMPLE</span><span>RECONCILE</span></div>
 </div></section>
 
-<!-- 7 · GET PAID -->
+<!-- 12 · EXAMPLE SETTLE WATERFALL -->
 <section class="slide"><div class="z">
-  <div class="kicker">THE SPLIT</div>
-  <h1 style="font-size:60px;margin-top:8px;">FOUR WAYS TO GET PAID</h1>
-  <div class="cards">
-    <div class="card"><div class="h"><span class="num">①</span>Capital back</div><p>Front materials or cash — reimbursed in full <b>before</b> any profit.</p></div>
-    <div class="card"><div class="h"><span class="num">②</span>Work · 70%</div><p>Farm, fund, or cook. Paid by what you put in.</p></div>
-    <div class="card"><div class="h"><span class="num">③</span>Rank · 30%</div><p>Your level in the chain, read from your Discord role.</p></div>
-    <div class="card"><div class="h"><span class="num">④</span>Commission</div><p>Hazard pay for moving product — you hold the heat.</p></div>
+  <div class="kicker">LIVE EXAMPLE · ④ SETTLE</div>
+  <h1 style="font-size:52px;margin-top:8px;">THE PROFIT POOL</h1>
+  <p class="lead" style="margin-top:8px;font-size:21px;"><span class="cmd">/settle</span> reimburses capital, pays commission, then splits what's left:</p>
+  <div class="pool" style="margin-top:22px;">
+    <div class="b g"><div class="lab">REVENUE</div><div class="v">$220,000</div></div>
+    <div class="op">−</div>
+    <div class="b"><div class="lab">CAPITAL</div><div class="v">$141,700</div></div>
+    <div class="op">−</div>
+    <div class="b"><div class="lab">COMMISSION</div><div class="v">$17,600</div></div>
+    <div class="op">=</div>
+    <div class="b grn"><div class="lab">DISTRIBUTABLE</div><div class="v">$60,700</div></div>
   </div>
-  <p class="lead" style="margin-top:28px;font-size:21px;color:var(--muted);">Big take-home numbers are mostly your own capital coming back — the payout shows capital vs. earned separately.</p>
-  <div class="foot"><span>CUTTER · CREW GUIDE</span><span>PAYOUTS</span></div>
+  <div class="pool" style="margin-top:14px;">
+    <div class="b" style="flex:2;"><div class="lab">WORK POOL · 70% — split by capital + labor contributed</div><div class="v" style="color:var(--gold-br)">$42,490</div></div>
+    <div class="b" style="flex:2;"><div class="lab">RANK POOL · 30% — split by level weight (5/4/3/2/1)</div><div class="v" style="color:var(--gold-br)">$18,210</div></div>
+  </div>
+  <div class="foot"><span>CUTTER · LIVE EXAMPLE</span><span>THE POOL</span></div>
 </div></section>
 
-<!-- 8 · RANK CUTS -->
+<!-- 13 · EXAMPLE PAYOUTS -->
+<section class="slide"><div class="z">
+  <div class="kicker">LIVE EXAMPLE · THE PAYOUT</div>
+  <h1 style="font-size:52px;margin-top:8px;">EVERYONE PAID — TO THE DOLLAR</h1>
+  <table class="paytable">
+    <tr><th>MEMBER</th><th>RANK</th><th>CAPITAL</th><th>COMM.</th><th>WORK</th><th>RANK</th><th>NET</th></tr>
+    <tr><td>Marco</td><td>I</td><td>93,000</td><td class="dim">—</td><td>16,282</td><td>5,691</td><td class="net">114,972</td></tr>
+    <tr><td>Rico</td><td>III</td><td>29,500</td><td>17,600</td><td>5,165</td><td>3,414</td><td class="net">55,679</td></tr>
+    <tr><td>Vinny</td><td>III</td><td>19,200</td><td class="dim">—</td><td>3,361</td><td>3,414</td><td class="net">25,976</td></tr>
+    <tr><td>Tony</td><td>IV</td><td class="dim">—</td><td class="dim">—</td><td>10,242</td><td>2,276</td><td class="net">12,518</td></tr>
+    <tr><td>Lou</td><td>III</td><td class="dim">—</td><td class="dim">—</td><td>7,441</td><td>3,414</td><td class="net">10,855</td></tr>
+    <tr class="tot"><td>TOTAL</td><td></td><td>141,700</td><td>17,600</td><td>42,491</td><td>18,209</td><td class="net">220,000</td></tr>
+  </table>
+  <div class="note">Marco's big number is mostly his own <b>$93,000 capital</b> coming back. The channel archives read-only — that's everyone's receipt.</div>
+  <div class="foot"><span>CUTTER · LIVE EXAMPLE</span><span>SETTLED</span></div>
+</div></section>
+
+<!-- 14 · RANK CUTS -->
 <section class="slide"><div class="z">
   <div class="kicker">THE HIERARCHY SHARE</div>
-  <h1 style="font-size:60px;margin-top:8px;">RANK CUTS</h1>
+  <h1 style="font-size:58px;margin-top:8px;">RANK CUTS</h1>
   <p class="lead" style="margin-top:12px;font-size:22px;">30% of every job's profit is the <b>rank pool</b>, split by your level — auto-read from your Discord role.</p>
   <table class="ranktable">
     <tr><td class="lvl">I</td><td>Leadership — Don · Underboss</td><td class="w">5×</td></tr>
@@ -193,10 +340,78 @@
   <div class="foot"><span>CUTTER · CREW GUIDE</span><span>RANK</span></div>
 </div></section>
 
-<!-- 9 · FIXES & HELP -->
+<!-- 15 · COMMAND REF A -->
+<section class="slide"><div class="z">
+  <div class="kicker">COMMAND REFERENCE · 1 / 4</div>
+  <h1 style="font-size:50px;margin-top:6px;">SETUP &amp; ECONOMY <span style="font-size:22px;color:var(--muted)">— officers</span></h1>
+  <table class="cmdtable">
+    <tr><td class="c">/ping</td><td class="d">Health check — Cutter replies it's alive.</td></tr>
+    <tr><td class="c">/setup officer:@Capo</td><td class="d">Seeds the Honey line, sets the officer role, builds <b>#cutter-guide</b> + posts this deck.</td></tr>
+    <tr><td class="c">/config view</td><td class="d">Show every dial — labor rate, 70/30 split, commission, farm margin, weights, prices.</td></tr>
+    <tr><td class="c">/config panel</td><td class="d">Interactive ▰▰░ panel — nudge any dial with buttons, live.</td></tr>
+    <tr><td class="c">/config set dial:Commission value:8</td><td class="d">Set one dial directly.</td></tr>
+    <tr><td class="c">/rank list</td><td class="d">Show the current role → level (I–V) map.</td></tr>
+    <tr><td class="c">/rank map role:@Capo level:III</td><td class="d">Tie a Discord role to a rank level.</td></tr>
+    <tr><td class="c">/rank unmap role:@Capo</td><td class="d">Remove a role's mapping (it falls back to level V).</td></tr>
+    <tr><td class="c">/rank weights level:I weight:5</td><td class="d">Change a level's multiplier in the rank split.</td></tr>
+  </table>
+  <div class="foot"><span>CUTTER · COMMANDS</span><span>SETUP &amp; ECONOMY</span></div>
+</div></section>
+
+<!-- 16 · COMMAND REF B -->
+<section class="slide"><div class="z">
+  <div class="kicker">COMMAND REFERENCE · 2 / 4</div>
+  <h1 style="font-size:50px;margin-top:6px;">CATALOG &amp; RECIPES <span style="font-size:22px;color:var(--muted)">— officers</span></h1>
+  <table class="cmdtable">
+    <tr><td class="c">/catalog list</td><td class="d">Every item at its current value — farmed items shown <b>auto-priced</b> from the product.</td></tr>
+    <tr><td class="c">/catalog add name:Press kit value:50 source:bought</td><td class="d">Add a new item to the catalog.</td></tr>
+    <tr><td class="c">/catalog set item:Vial value:50</td><td class="d">Change a base item's price (bought items only — others derive).</td></tr>
+    <tr><td class="c">/catalog remove item:Press kit</td><td class="d">Delete an item — warns if a recipe still uses it.</td></tr>
+    <tr><td class="c">/recipe line name:Cocaine final:Brick price:1200</td><td class="d">Start a product line and its final item + sell price.</td></tr>
+    <tr><td class="c">/recipe build line:Cocaine</td><td class="d">Opens a form, pre-filled with the chain — add, edit, or delete steps; saving replaces it.</td></tr>
+    <tr><td class="c">/recipe list</td><td class="d">All product lines and their steps.</td></tr>
+    <tr><td class="c">/recipe remove line:Cocaine</td><td class="d">Delete a product line and all its steps.</td></tr>
+  </table>
+  <div class="note">Recipes can build on each other — crack cooks <b>loose cocaine</b>, and Cutter values it through the cocaine chain.</div>
+  <div class="foot"><span>CUTTER · COMMANDS</span><span>CATALOG &amp; RECIPES</span></div>
+</div></section>
+
+<!-- 17 · COMMAND REF C -->
+<section class="slide"><div class="z">
+  <div class="kicker">COMMAND REFERENCE · 3 / 4</div>
+  <h1 style="font-size:50px;margin-top:6px;">RUN A JOB <span style="font-size:22px;color:var(--muted)">— everyone, in the op's channel</span></h1>
+  <table class="cmdtable">
+    <tr><td class="c">/job open name:Sat Cook product:Honey</td><td class="d">Creates the op its own channel under Operations — commands there need no IDs.</td></tr>
+    <tr><td class="c">/job list</td><td class="d">All open jobs and their channels.</td></tr>
+    <tr><td class="c">/job close</td><td class="d">Close this channel's job without settling — archives it read-only.</td></tr>
+    <tr><td class="c">/job reopen</td><td class="d">Officers: bring a settled job back to fix it, then <b>/settle</b> again.</td></tr>
+    <tr><td class="c">/deposit item:Vial qty:960</td><td class="d">Add materials to the pool (valued from the catalog) — or <b>cash:</b> for money.</td></tr>
+    <tr><td class="c">/process step:refine made:480</td><td class="d">Log a cook — report units you <b>made</b>; that's your labor.</td></tr>
+    <tr><td class="c">/settle</td><td class="d">Opener or officer: run the waterfall, post payouts, archive the channel.</td></tr>
+  </table>
+  <div class="foot"><span>CUTTER · COMMANDS</span><span>RUN A JOB</span></div>
+</div></section>
+
+<!-- 18 · COMMAND REF D -->
+<section class="slide"><div class="z">
+  <div class="kicker">COMMAND REFERENCE · 4 / 4</div>
+  <h1 style="font-size:50px;margin-top:6px;">MONEY &amp; TRACKING</h1>
+  <table class="cmdtable">
+    <tr><td class="c">/sale qty:1700 cash:220000</td><td class="d">Log a real-cash sale — seller earns commission. Add <b>by:@member</b> if someone else sold.</td></tr>
+    <tr><td class="c">/withdraw item:Honey qty:50</td><td class="d">Pull product or <b>cash:</b> back out — valued and deducted from your net.</td></tr>
+    <tr><td class="c">/status</td><td class="d">Contributions per member + reconciliation: capital, labor, revenue, what's on hand.</td></tr>
+    <tr><td class="c">/ledger</td><td class="d">The full blow-by-blow history of the job.</td></tr>
+    <tr><td class="c">/me</td><td class="d">Your own standing — fronted, cooked, sold, and what you'll clear.</td></tr>
+    <tr><td class="c">/void entry:&lt;pick&gt;</td><td class="d">Officers: reverse a mistaken entry — logged, never deleted.</td></tr>
+  </table>
+  <div class="note">Voids and reopens keep the books honest <b>without erasing history</b> — the archive always shows what really happened.</div>
+  <div class="foot"><span>CUTTER · COMMANDS</span><span>MONEY &amp; TRACKING</span></div>
+</div></section>
+
+<!-- 19 · FIXES & HELP -->
 <section class="slide"><div class="z">
   <div class="kicker">WHEN THINGS GO SIDEWAYS</div>
-  <h1 style="font-size:60px;margin-top:8px;">FIXES &amp; HELP</h1>
+  <h1 style="font-size:58px;margin-top:8px;">FIXES &amp; HELP</h1>
   <ul style="margin-top:16px;">
     <li>Wrong number? Officers can <span class="cmd">/void</span> any entry — it's logged, never deleted</li>
     <li>Already settled but need a fix? Officers <span class="cmd">/job reopen</span> → correct → <span class="cmd">/settle</span> again</li>
@@ -207,7 +422,7 @@
   <div class="foot"><span>CUTTER · CREW GUIDE</span><span>HELP</span></div>
 </div></section>
 
-<!-- 10 · CLOSING -->
+<!-- 20 · CLOSING -->
 <section class="slide"><div class="z" style="justify-content:center;align-items:center;text-align:center;">
   <h1 style="font-size:64px;">YOU PUT IN THE WORK.</h1>
   <h1 style="font-size:64px;color:var(--gold-br);margin-top:4px;">CUTTER PAYS YOU RIGHT.</h1>

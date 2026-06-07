@@ -17,7 +17,16 @@ const lambdaClient = new LambdaClient({});
 
 // Tutorial deck assets are bundled next to the handler (see infra commandHooks).
 const DECK_DIR = __dirname;
-const SLIDE_NAMES = Array.from({ length: 10 }, (_, k) => `tutorial-${String(k + 1).padStart(2, "0")}.png`);
+function slideFiles(): string[] {
+  try {
+    return fs
+      .readdirSync(DECK_DIR)
+      .filter((n) => /^tutorial-\d+\.png$/.test(n))
+      .sort();
+  } catch {
+    return [];
+  }
+}
 function readDeck(name: string): Uint8Array | null {
   try {
     return fs.readFileSync(path.join(DECK_DIR, name));
@@ -187,50 +196,6 @@ async function route(i: any) {
   }
 }
 
-function guideEmbeds() {
-  return [
-    {
-      title: "📖 Cutter — Crew Guide",
-      color: COLORS.gold,
-      description:
-        "Cutter tracks every operation and splits the haul fairly, automatically. Run commands inside an op's channel; `/settle` pays everyone out and archives the record.",
-    },
-    {
-      title: "▶️ Running an op",
-      color: COLORS.gold,
-      description:
-        "**/job open** → makes the op its own channel\n**/deposit** materials & cash · **/process** each cook (report what you made) · **/sale** real-cash sales\n**/status** to track · **/ledger** for history · **/settle** to pay out & archive",
-    },
-    {
-      title: "💬 Your commands",
-      color: COLORS.gold,
-      fields: [
-        { name: "Add to the pool", value: "`/deposit item: qty:` · `/deposit cash:`" },
-        { name: "Cook & sell", value: "`/process step: made:` · `/sale qty: cash:`" },
-        { name: "Check", value: "`/status` · `/ledger` · `/me`" },
-      ],
-    },
-    {
-      title: "💰 Four ways to get paid",
-      color: COLORS.green,
-      description:
-        "**① Capital back** — fronted materials/cash reimbursed first\n**② Work (70%)** — farm, fund, or cook\n**③ Rank (30%)** — your level, from your Discord role\n**④ Commission** — hazard pay for selling",
-    },
-    {
-      title: "🏷️ Rank cuts",
-      color: COLORS.gold,
-      description:
-        "30% of profit splits by level (auto from your role):\nI Leadership **5×** · II Consigliere **4×** · III Capos **3×** · IV Enforcers **2×** · V Associates **1×**",
-    },
-    {
-      title: "🛠️ Fixes & help",
-      color: COLORS.blue,
-      description:
-        "Mistake? Officers `/void` an entry (logged, never deleted). Settled but need a fix? Officers `/job reopen` → correct → `/settle` again. Check `/status` before settling. Stuck? Ping an officer.",
-    },
-  ];
-}
-
 async function setupWork(i: any): Promise<MsgData | string> {
   const gid = guildId(i);
   let config = await store.getConfig(gid);
@@ -258,12 +223,12 @@ async function setupWork(i: any): Promise<MsgData | string> {
         parent_id: opsCat,
         topic: "How to use Cutter",
       });
-      await rest.postMessage(ch.id, { embeds: guideEmbeds() });
       config.guideChannelId = ch.id;
       await store.putConfig(gid, config);
     }
     // upload the tutorial deck once (also covers servers set up before it existed):
-    // slides inline as a gallery + the PDF to download.
+    // slides inline as a gallery + the PDF to download. No rich-text guide — the
+    // deck is the guide.
     if (config.guideChannelId && !config.guideDeckPosted) {
       // Read-only for @everyone, but explicitly ALLOW the bot to post & attach —
       // otherwise the upload 403s, since the bot otherwise inherits @everyone's
@@ -275,10 +240,16 @@ async function setupWork(i: any): Promise<MsgData | string> {
           { id: appId, type: 1, allow: "52224" }, // bot: View+Send+EmbedLinks+AttachFiles
         ],
       });
-      const slides = SLIDE_NAMES.map((n) => ({ name: n, data: readDeck(n), contentType: "image/png" }))
+      const slides = slideFiles()
+        .map((n) => ({ name: n, data: readDeck(n), contentType: "image/png" }))
         .filter((s): s is { name: string; data: Uint8Array; contentType: string } => s.data != null);
-      if (slides.length) {
-        await rest.postFiles(config.guideChannelId, slides, "📑 **Cutter tutorial** — swipe through the slides:");
+      // Discord caps attachments at 10 per message — post the slides in batches.
+      for (let k = 0; k < slides.length; k += 10) {
+        await rest.postFiles(
+          config.guideChannelId,
+          slides.slice(k, k + 10),
+          k === 0 ? "📑 **Cutter tutorial** — swipe through the slides:" : undefined
+        );
       }
       const pdf = readDeck("Cutter-Tutorial.pdf");
       if (pdf) {
@@ -289,7 +260,7 @@ async function setupWork(i: any): Promise<MsgData | string> {
         await store.putConfig(gid, config);
       }
     }
-    guideLine = `Guide + tutorial deck → <#${config.guideChannelId}> (read-only)`;
+    guideLine = `Tutorial deck → <#${config.guideChannelId}> (read-only)`;
   } catch (e) {
     console.error("guide channel failed", e);
   }
