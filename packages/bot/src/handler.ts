@@ -334,7 +334,7 @@ const DIALS: Dial[] = [
   },
   ...[1, 2, 3, 4, 5].map(
     (lvl): Dial => ({
-      key: `rank${lvl}`, label: `Rank L${lvl} weight`, fine: 1, coarse: 1,
+      key: `rank${lvl}`, label: `Rank L${lvl} weight`, fine: 1, coarse: 5,
       val: (c) => `${c.rankMultipliers[lvl] ?? 0}×`,
       fill: (c) => Math.round((Math.min(c.rankMultipliers[lvl] ?? 0, 10) / 10) * 8),
       apply: (c, d) => { c.rankMultipliers[lvl] = Math.max(0, (c.rankMultipliers[lvl] ?? 0) + d); },
@@ -352,6 +352,7 @@ const stepBtn = (key: string, delta: number, label: string) => ({
 
 function renderPanel(config: Config, focusedKey: string): MsgData {
   const focused = DIALS.find((d) => d.key === focusedKey) ?? DIALS[0];
+  const deltas = [...new Set([-focused.coarse, -focused.fine, focused.fine, focused.coarse])].sort((a, b) => a - b);
   const lines = DIALS.map(
     (d) => `${d.key === focused.key ? "▸" : " "} ${d.label.padEnd(16)} ${BAR(d.fill(config))}  ${d.val(config)}`
   );
@@ -378,12 +379,7 @@ function renderPanel(config: Config, focusedKey: string): MsgData {
       },
       {
         type: 1,
-        components: [
-          stepBtn(focused.key, -focused.coarse, `−${focused.coarse}`),
-          stepBtn(focused.key, -focused.fine, `−${focused.fine}`),
-          stepBtn(focused.key, focused.fine, `+${focused.fine}`),
-          stepBtn(focused.key, focused.coarse, `+${focused.coarse}`),
-        ],
+        components: deltas.map((d) => stepBtn(focused.key, d, `${d > 0 ? "+" : "−"}${Math.abs(d)}`)),
       },
       {
         type: 1,
