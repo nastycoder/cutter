@@ -32,7 +32,7 @@ v2 replaces the job with a **standing treasury** mirrored as the crew's real **s
 ### 3.1 What each member earns (their *tab*, accrued live within a cycle)
 
 ```
-capital_m      = cash fronted + bought items at cost (catalog price, or price paid on a bulk buy)  → reimbursed
+capital_m      = cash fronted + bought items at catalog value  → reimbursed
 farm_m         = farmed materials credited to m × item value     → paid (auto-priced)
 labor_m        = units m processed × labor rate                  → paid
 commission_m   = commission% × m's sales                         → paid
@@ -134,7 +134,7 @@ Cross-house actions name their destination. Reports/payout live in **#money-hous
 | Channel | Command | Does |
 |---|---|---|
 | #raw / #product | `/deposit item: qty: [credit:@who]` | add farmed/owned material; **farm pay** to credit (default: you) |
-| #raw / #product | `/buy item: qty: [cost:]` | buy supplies or bulk product; **capital** = `cost` if given, else catalog price × qty, owed to buyer |
+| #raw / #product | `/buy item: qty:` | buy supplies or product; **capital** = catalog value × qty, owed to buyer |
 | #money | `/fund-cash amount:` *(deposit cash)* | fund the treasury with cash; **capital** owed back |
 | #raw→#product | `/process line: step: made: [credit:@who]` | consume raw → product; **labor pay** to credit |
 | any | `/transfer item: qty: to:#house` | move stock between houses (logistics; no pay effect) |
@@ -157,11 +157,10 @@ can't be inferred from context the way v1's job did:
   line disambiguates which recipe to run. `step:` autocompletes to that line's steps.
 - **`/sale` takes `product:`** — a house stores finished goods from every line, so the sale
   names which product moved. `product:` autocompletes to the lines' final items.
-- **`/buy` cost is optional** — market supplies default to their catalog price (capital = price ×
-  qty); a negotiated **bulk buy** (e.g. finished product bought off another player to flip as a
-  crew) takes an explicit `cost:` for what was actually paid. The flip margin then lands in the
-  fund at payout. The item's kind picks the house (base → raw, product → product), or run it in
-  the house channel.
+- **`/buy` takes no `cost:`** — everything bought is valued at its catalog price (capital =
+  price × qty), including finished product bought in bulk to flip. Score a deal or overpay on
+  your own and the difference is **yours** — the crew reimburses catalog value, no more, no less.
+  The item's kind picks the house (base → raw, product → product), or run it in the house channel.
 
 ## 7. Engine changes
 

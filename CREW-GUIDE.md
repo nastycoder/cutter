@@ -41,14 +41,11 @@ Farmed it yourself? That's your farm pay. **Holding it for someone who farmed it
 ```
 /buy item:Vial qty:200
 ```
-For standard market supplies you don't type a price — Cutter knows it from the catalog
-($50/vial → $10,000). **Buying in bulk off another player** — say a big lot of finished product
-for the crew to flip — add what you actually paid:
-```
-/buy item:Cocaine bag qty:500 cost:400000
-```
-Either way you get that money **back** off the top when we settle — buying is fronting capital,
-not a donation. When the crew sells the lot for more, the markup drops into the fund.
+No price to type — Cutter values everything at the catalog price ($50/vial → $10,000), and you
+get that **back** off the top when we settle. Buying a bulk lot of product to flip works the
+same way — it's valued at catalog. **Snag a deal or overpay on your own? That's yours** — the
+crew reimburses catalog value, so a good buy puts money in your pocket, and the rest of the
+markup drops into the fund when we sell.
 
 **Cook a step** — in 🧪 **#product-house**:
 ```
@@ -158,7 +155,7 @@ happened and who did it.
 | You're… | Run | Where |
 |---|---|---|
 | banking raw materials | `/deposit item: qty: [credit:@who]` | 🌿 raw |
-| buying supplies / bulk product | `/buy item: qty: [cost:]` | 🌿 raw / 🧪 product |
+| buying supplies / product | `/buy item: qty:` | 🌿 raw / 🧪 product |
 | cooking | `/process line: step: made: [credit:@who]` | 🧪 product |
 | moving stock | `/transfer item: qty: to:#house` | anywhere |
 | selling | `/sale product: qty: cash: [by:@who]` | 💰 money |
