@@ -217,7 +217,7 @@
   <div class="kicker">THE TWO RULES THAT KEEP IT FAIR</div>
   <h1 style="font-size:56px;margin-top:8px;">CREDIT &amp; CATALOG</h1>
   <div class="cards" style="margin-top:20px;">
-    <div class="card"><div class="h">🤝 CREDIT FOLLOWS THE DOER</div><p>Banking poppy someone handed you at the border? <b>credit:@who</b> pays the farmer, not the carrier:</p><div class="cmds">/deposit item:Poppy qty:600 credit:@Vinny<br>/process line:Honey step:refine made:480 credit:@Tony<br>/sale product:Honey qty:1700 cash:220000 by:@Rico</div></div>
+    <div class="card"><div class="h">🤝 CREDIT FOLLOWS THE DOER</div><p>Banking poppy seed someone handed you at the border? <b>credit:@who</b> pays the farmer, not the carrier:</p><div class="cmds">/deposit item:Poppy seed qty:600 credit:@Vinny<br>/process line:Honey step:dry made:480 credit:@Tony<br>/sale product:Honey qty:1700 cash:220000 by:@Rico</div></div>
     <div class="card"><div class="h">🛒 EVERYTHING AT CATALOG</div><p>No price to type on <span class="cmd">/buy</span> — Cutter values it at the catalog and <b>you get that back off the top</b>. Snagged a deal or overpaid on your own? <b>That's yours</b> — the crew reimburses catalog, no more, no less.</p><div class="cmds">/buy item:Vial qty:200 &nbsp;→ capital $10,000<br>/fund-cash amount:25000 &nbsp;→ cash capital</div></div>
   </div>
   <p class="lead" style="margin-top:24px;font-size:21px;color:var(--muted);">Farmed materials are auto-priced from the product so the crew always keeps its margin — officers tune it with <span class="cmd">/config</span>.</p>
@@ -249,7 +249,7 @@
   <table class="paytable" style="margin-top:16px;">
     <tr><th>WHO</th><th>ROLE</th><th>RANK</th><th>WHAT THEY DO</th></tr>
     <tr><td>Marco</td><td>Underboss</td><td class="dim">I · 5×</td><td style="text-align:left;font-family:'Barlow Condensed';font-weight:600;color:var(--cream);">Buys 200 vials with his own cash</td></tr>
-    <tr><td>Vinny</td><td>Supplier</td><td class="dim">III · 3×</td><td style="text-align:left;font-family:'Barlow Condensed';font-weight:600;color:var(--cream);">Farms 600 poppy — hands it off to Marco to bank</td></tr>
+    <tr><td>Vinny</td><td>Supplier</td><td class="dim">III · 3×</td><td style="text-align:left;font-family:'Barlow Condensed';font-weight:600;color:var(--cream);">Farms 600 poppy seed — hands it off to Marco to bank</td></tr>
     <tr><td>Tony</td><td>Goon</td><td class="dim">IV · 2×</td><td style="text-align:left;font-family:'Barlow Condensed';font-weight:600;color:var(--cream);">Cooks 480 units through the chain</td></tr>
     <tr><td>Rico</td><td>Dealer</td><td class="dim">III · 3×</td><td style="text-align:left;font-family:'Barlow Condensed';font-weight:600;color:var(--cream);">Checks out the product &amp; sells $80,000</td></tr>
   </table>
@@ -263,12 +263,12 @@
   <h1 style="font-size:52px;margin-top:8px;">EVERYBODY'S TAB BUILDS</h1>
   <div class="chat" style="margin-top:14px;">
     <div class="row"><span class="who">Marco</span><span class="where">🌿 raw-house</span><span class="cmd2">/buy <b>item:</b>Vial <b>qty:</b>200</span><span class="eff">capital <b>$10,000</b> (catalog $50)</span></div>
-    <div class="row"><span class="who">Marco</span><span class="where">🌿 raw-house</span><span class="cmd2">/deposit <b>item:</b>Poppy <b>qty:</b>600 <b>credit:</b>@Vinny</span><span class="eff">farm pay <b>$12,000 → Vinny</b></span></div>
-    <div class="row"><span class="who">Tony</span><span class="where">🧪 product-house</span><span class="cmd2">/process <b>line:</b>Honey <b>step:</b>refine <b>made:</b>480</span><span class="eff">labor <b>$12,000</b> (480 × $25)</span></div>
+    <div class="row"><span class="who">Marco</span><span class="where">🌿 raw-house</span><span class="cmd2">/deposit <b>item:</b>Poppy seed <b>qty:</b>600 <b>credit:</b>@Vinny</span><span class="eff">farm pay <b>$12,000 → Vinny</b></span></div>
+    <div class="row"><span class="who">Tony</span><span class="where">🧪 product-house</span><span class="cmd2">/process <b>line:</b>Honey <b>step:</b>dry <b>made:</b>480</span><span class="eff">labor <b>$12,000</b> (480 × $25)</span></div>
     <div class="row"><span class="who">Rico</span><span class="where">🧪 product-house</span><span class="cmd2">/checkout <b>product:</b>Honey <b>qty:</b>1700</span><span class="eff">holding 1,700 — no tab effect</span></div>
     <div class="row" style="border-left-color:var(--green);"><span class="who">Rico</span><span class="where">💰 money-house</span><span class="cmd2">/sale <b>product:</b>Honey <b>qty:</b>1700 <b>cash:</b>80000</span><span class="eff" style="color:var(--green)">commission <b>$6,400</b> · holding squared</span></div>
   </div>
-  <div class="note">Marco carried Vinny's poppy in, but <b>credit:</b> paid the man who farmed it. Earned so far — Marco <b>$10,000</b> · Vinny <b>$12,000</b> · Tony <b>$12,000</b> · Rico <b>$6,400</b> = <b>$40,400</b>.</div>
+  <div class="note">Marco carried Vinny's poppy seed in, but <b>credit:</b> paid the man who farmed it. Earned so far — Marco <b>$10,000</b> · Vinny <b>$12,000</b> · Tony <b>$12,000</b> · Rico <b>$6,400</b> = <b>$40,400</b>.</div>
   <div class="foot"><span>CUTTER · LIVE EXAMPLE</span><span>THE TAB</span></div>
 </div></section>
 
@@ -401,10 +401,10 @@
   <div class="kicker">COMMAND REFERENCE · 3 / 5</div>
   <h1 style="font-size:50px;margin-top:6px;">LOG YOUR WORK <span style="font-size:22px;color:var(--muted)">— everyone, in the house you're in</span></h1>
   <table class="cmdtable">
-    <tr><td class="c">/deposit item:Poppy qty:600 credit:@Vinny</td><td class="d">Bank materials — <b>farm pay</b> to whoever did the work (default: you).</td></tr>
+    <tr><td class="c">/deposit item:Poppy seed qty:600 credit:@Vinny</td><td class="d">Bank materials — <b>farm pay</b> to whoever did the work (default: you).</td></tr>
     <tr><td class="c">/buy item:Vial qty:200</td><td class="d">Bought with your own cash — <b>capital</b> at catalog value, owed back.</td></tr>
     <tr><td class="c">/fund-cash amount:25000</td><td class="d">Front the treasury cash — capital, owed back at payday.</td></tr>
-    <tr><td class="c">/process line:Honey step:refine made:480 credit:@T</td><td class="d">Log a cook — pulls inputs, adds product, pays <b>labor</b> per unit made.</td></tr>
+    <tr><td class="c">/process line:Honey step:dry made:480 credit:@T</td><td class="d">Log a cook — pulls inputs, adds product, pays <b>labor</b> per unit made.</td></tr>
     <tr><td class="c">/transfer item:Cut heroin qty:400 to:#product-house</td><td class="d">Move stock between houses — logistics only, no pay effect.</td></tr>
     <tr><td class="c">/checkout product:Honey qty:200</td><td class="d">Take product out to sell — crew goods in your <b>holding</b>, no tab effect.</td></tr>
     <tr><td class="c">/sale product:Honey qty:150 cash:18000 by:@Rico</td><td class="d">Real-cash sale — draws the seller's holding first; <b>commission</b> to them.</td></tr>
@@ -440,7 +440,7 @@
     <tr><td class="c">/stash [house:raw]</td><td class="d">What the books say is on a shelf (defaults to the channel you're in).</td></tr>
     <tr><td class="c">/status</td><td class="d">The whole treasury — cash, the fund, every house, this cycle's contributors.</td></tr>
     <tr><td class="c">/ledger</td><td class="d">This cycle's blow-by-blow — who did what, when.</td></tr>
-    <tr><td class="c">/reconcile item:Poppy count:480</td><td class="d">Officers: log a real shelf count — records shrinkage vs the books.</td></tr>
+    <tr><td class="c">/reconcile item:Poppy seed count:480</td><td class="d">Officers: log a real shelf count — records shrinkage vs the books.</td></tr>
   </table>
   <div class="note">Total product = houses + holdings, so nothing's double-counted. Books off from the shelf? <b>/reconcile</b> pins reality and keeps the diff on record.</div>
   <div class="foot"><span>CUTTER · COMMANDS</span><span>THE BOOKS</span></div>

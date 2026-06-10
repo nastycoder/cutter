@@ -124,7 +124,7 @@ Labor rate $25/unit, commission 8%, ranks 5/4/3/2/1.
 | Member | Rank | Did | capital | farm | labor | comm. |
 |---|---|---|--:|--:|--:|--:|
 | Marco | I (5×) | fronted 200 vials @ $50 | 10,000 | — | — | — |
-| Vinny | III (3×) | farmed 600 poppy @ $20 | — | 12,000 | — | — |
+| Vinny | III (3×) | farmed 600 poppy seed @ $20 | — | 12,000 | — | — |
 | Tony | IV (2×) | processed 480 units | — | — | 12,000 | — |
 | Rico | III (3×) | sold $80,000 | — | — | — | 6,400 |
 
@@ -191,7 +191,7 @@ Cross-house actions name their destination. Reports/payout live in **#money-hous
 
 Because the treasury holds **multiple product lines at once** (no per-job isolation), the line
 can't be inferred from context the way v1's job did:
-- **`/process` takes `line:`** — a step name like `refine` may exist in several recipes, so the
+- **`/process` takes `line:`** — a step name like `dry` may exist in several recipes, so the
   line disambiguates which recipe to run. `step:` autocompletes to that line's steps.
 - **`/sale` takes `product:`** — a house stores finished goods from every line, so the sale
   names which product moved. `product:` autocompletes to the lines' final items.

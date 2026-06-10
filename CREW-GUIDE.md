@@ -12,7 +12,7 @@ simple commands as you work; Cutter keeps the tally. No arguing over who's owed 
 
 Cutter mirrors our real stash houses, so the books match what's actually on the shelf:
 
-- 🌿 **Raw House** — raw materials (poppy, acetone, chemicals, bought supplies)
+- 🌿 **Raw House** — raw materials (poppy seed, acetone, chemicals, bought supplies)
 - 🧪 **Product House** — anything we've cooked, from half-steps to finished product
 - 💰 **Money House** — the cash
 
@@ -27,13 +27,13 @@ As you do things, log them. It takes a second and it's how you get paid.
 
 **Bring in raw materials** — in 🌿 **#raw-house**:
 ```
-/deposit item:Poppy qty:600
+/deposit item:Poppy seed qty:600
 ```
 Farmed it yourself? That's your farm pay. **Holding it for someone who farmed it?** Credit them:
 ```
-/deposit item:Poppy qty:600 credit:@Vinny
+/deposit item:Poppy seed qty:600 credit:@Vinny
 ```
-> 💡 This is the key to handoffs. If you flew in and someone handed you their poppy to bank,
+> 💡 This is the key to handoffs. If you flew in and someone handed you their poppy seed to bank,
 > `credit:` makes sure the person who **actually farmed it** gets paid — not whoever's
 > carrying it. Credit always follows the person who did the work.
 
@@ -49,9 +49,9 @@ markup drops into the fund when we sell.
 
 **Cook a step** — in 🧪 **#product-house**:
 ```
-/process line:Honey step:refine made:480
+/process line:Honey step:dry made:480
 ```
-Report what you **made**. Tell it the **line** too — a step like `refine` can show up in more
+Report what you **made**. Tell it the **line** too — a step like `dry` can show up in more
 than one recipe, so Cutter needs to know which product you're cooking. It pulls the right raw
 materials out, adds the product, and pays you for the labor. Cooking for someone else? `credit:@who`.
 
@@ -123,7 +123,7 @@ cycle.** Inventory in the houses stays put — only the tally resets. It's payda
 | Member | Rank | Put in | Work pay | + Rank cut of $39,600 fund | **Take-home** |
 |---|---|---|--:|--:|--:|
 | Marco | I (5×) | fronted 200 vials | $10,000 capital | $15,231 | **$25,231** |
-| Vinny | III (3×) | farmed 600 poppy | $12,000 farm | $9,138 | **$21,138** |
+| Vinny | III (3×) | farmed 600 poppy seed | $12,000 farm | $9,138 | **$21,138** |
 | Tony | IV (2×) | cooked 480 units | $12,000 labor | $6,092 | **$18,092** |
 | Rico | III (3×) | sold $80,000 | $6,400 commission | $9,138 | **$15,538** |
 

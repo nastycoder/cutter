@@ -144,14 +144,21 @@ export async function seedDefaults(gid: string): Promise<void> {
     referencePrice: 125,
   });
 
+  // Replace the honey chain cleanly: drop any previously-seeded steps and the
+  // catalog ids this seed has retired, so a re-run of /setup never leaves a
+  // stale "refine" step or "Heroin powder" item behind.
+  const oldSteps = (await listRecipes(gid)).filter((r) => r.lineId === "honey");
+  for (const r of oldSteps) await deleteRecipe(gid, "honey", r.step);
+  for (const legacy of ["poppy", "heroin_powder"]) await deleteCatalogItem(gid, legacy);
+
   const items: CatalogItem[] = [
-    { id: "poppy", name: "Poppy", kind: "base", value: 20, source: "farmed", lineId: "honey" },
+    { id: "poppy_seed", name: "Poppy seed", kind: "base", value: 20, source: "farmed", lineId: "honey" },
     { id: "acetone", name: "Acetone", kind: "base", value: 30, source: "farmed", lineId: "honey" },
     { id: "baking_soda", name: "Baking soda", kind: "base", value: 50, source: "bought", lineId: "honey" },
     { id: "vial", name: "Vial", kind: "base", value: 50, source: "bought", lineId: "honey" },
     { id: "syringe", name: "Syringe", kind: "base", value: 50, source: "bought", lineId: "honey" },
     { id: "cleaning_kit", name: "Cleaning kit", kind: "base", value: 50, source: "bought" },
-    { id: "heroin_powder", name: "Heroin powder", kind: "intermediate", value: 0, lineId: "honey" },
+    { id: "weak_heroin_powder", name: "Weak heroin powder", kind: "intermediate", value: 0, lineId: "honey" },
     { id: "cut_heroin", name: "Cut heroin", kind: "intermediate", value: 0, lineId: "honey" },
     { id: "vial_heroin", name: "Vial heroin", kind: "intermediate", value: 0, lineId: "honey" },
     { id: "honey", name: "Honey", kind: "final", value: 0, lineId: "honey" },
@@ -159,9 +166,9 @@ export async function seedDefaults(gid: string): Promise<void> {
   for (const it of items) await putCatalogItem(gid, it);
 
   const recipes: RecipeStep[] = [
-    { lineId: "honey", step: "refine", inputs: [{ itemId: "poppy", qty: 5 }, { itemId: "acetone", qty: 2 }], output: { itemId: "heroin_powder", yield: 4 } },
-    { lineId: "honey", step: "cut", inputs: [{ itemId: "baking_soda", qty: 2 }, { itemId: "heroin_powder", qty: 2 }], output: { itemId: "cut_heroin", yield: 4 } },
-    { lineId: "honey", step: "bottle", inputs: [{ itemId: "vial", qty: 4 }, { itemId: "cut_heroin", qty: 4 }], output: { itemId: "vial_heroin", yield: 4 }, canFail: true },
+    { lineId: "honey", step: "dry", inputs: [{ itemId: "poppy_seed", qty: 5 }, { itemId: "acetone", qty: 2 }], output: { itemId: "weak_heroin_powder", yield: 4 } },
+    { lineId: "honey", step: "cut", inputs: [{ itemId: "weak_heroin_powder", qty: 2 }, { itemId: "baking_soda", qty: 2 }], output: { itemId: "cut_heroin", yield: 4 } },
+    { lineId: "honey", step: "bottle", inputs: [{ itemId: "cut_heroin", qty: 4 }, { itemId: "vial", qty: 1 }], output: { itemId: "vial_heroin", yield: 4 }, canFail: true },
     { lineId: "honey", step: "dose", inputs: [{ itemId: "vial_heroin", qty: 1 }, { itemId: "syringe", qty: 1 }], output: { itemId: "honey", yield: 2 }, canFail: true },
   ];
   for (const r of recipes) await putRecipe(gid, r);

@@ -1661,7 +1661,7 @@ async function handleRecipe(i: any) {
                 label: "One per line — saving replaces the chain",
                 required: true,
                 value: prefill || undefined,
-                placeholder: "refine : 5 poppy + 2 acetone -> 4 powder\nwash * : 2 solvent + 2 powder -> 12-15 cocaine",
+                placeholder: "dry : 5 poppy seed + 2 acetone -> 4 weak powder\nwash * : 2 solvent + 2 powder -> 12-15 cocaine",
               },
             ],
           },
@@ -1754,7 +1754,7 @@ async function handleModal(i: any) {
     });
   }
   if (!steps.length) {
-    return reply("⚠️ Couldn't parse any steps. Format: `step: 5 poppy + 2 acetone -> 4 powder`");
+    return reply("⚠️ Couldn't parse any steps. Format: `step: 5 poppy seed + 2 acetone -> 4 weak powder`");
   }
 
   const outputs = new Set(steps.map((s) => s.output.itemId));

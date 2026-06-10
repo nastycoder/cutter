@@ -14,21 +14,21 @@ import type { CatalogItem, RecipeStep, ProductLine, Config, LedgerEntry, EntryTy
 
 // ---- honey fixtures (mirror seedDefaults) ----
 const catalog: CatalogItem[] = [
-  { id: "poppy", name: "Poppy", kind: "base", value: 20, source: "farmed", lineId: "honey" },
+  { id: "poppy_seed", name: "Poppy seed", kind: "base", value: 20, source: "farmed", lineId: "honey" },
   { id: "acetone", name: "Acetone", kind: "base", value: 30, source: "farmed", lineId: "honey" },
   { id: "baking_soda", name: "Baking soda", kind: "base", value: 50, source: "bought", lineId: "honey" },
   { id: "vial", name: "Vial", kind: "base", value: 50, source: "bought", lineId: "honey" },
   { id: "syringe", name: "Syringe", kind: "base", value: 50, source: "bought", lineId: "honey" },
   { id: "cleaning_kit", name: "Cleaning kit", kind: "base", value: 50, source: "bought" },
-  { id: "heroin_powder", name: "Heroin powder", kind: "intermediate", value: 0, lineId: "honey" },
+  { id: "weak_heroin_powder", name: "Weak heroin powder", kind: "intermediate", value: 0, lineId: "honey" },
   { id: "cut_heroin", name: "Cut heroin", kind: "intermediate", value: 0, lineId: "honey" },
   { id: "vial_heroin", name: "Vial heroin", kind: "intermediate", value: 0, lineId: "honey" },
   { id: "honey", name: "Honey", kind: "final", value: 0, lineId: "honey" },
 ];
 const recipes: RecipeStep[] = [
-  { lineId: "honey", step: "refine", inputs: [{ itemId: "poppy", qty: 5 }, { itemId: "acetone", qty: 2 }], output: { itemId: "heroin_powder", yield: 4 } },
-  { lineId: "honey", step: "cut", inputs: [{ itemId: "baking_soda", qty: 2 }, { itemId: "heroin_powder", qty: 2 }], output: { itemId: "cut_heroin", yield: 4 } },
-  { lineId: "honey", step: "bottle", inputs: [{ itemId: "vial", qty: 4 }, { itemId: "cut_heroin", qty: 4 }], output: { itemId: "vial_heroin", yield: 4 }, canFail: true },
+  { lineId: "honey", step: "dry", inputs: [{ itemId: "poppy_seed", qty: 5 }, { itemId: "acetone", qty: 2 }], output: { itemId: "weak_heroin_powder", yield: 4 } },
+  { lineId: "honey", step: "cut", inputs: [{ itemId: "baking_soda", qty: 2 }, { itemId: "weak_heroin_powder", qty: 2 }], output: { itemId: "cut_heroin", yield: 4 } },
+  { lineId: "honey", step: "bottle", inputs: [{ itemId: "cut_heroin", qty: 4 }, { itemId: "vial", qty: 1 }], output: { itemId: "vial_heroin", yield: 4 }, canFail: true },
   { lineId: "honey", step: "dose", inputs: [{ itemId: "vial_heroin", qty: 1 }, { itemId: "syringe", qty: 1 }], output: { itemId: "honey", yield: 2 }, canFail: true },
 ];
 const line: ProductLine = { id: "honey", name: "Honey", finalItemId: "honey", referencePrice: 125 };
@@ -77,32 +77,32 @@ const netOf = (r: { perMember: { userId: string; net: number }[] }) =>
 
 test("buildCosts derives the honey cost-of-goods ladder", () => {
   const c = buildCosts(catalog, recipes);
-  assert.equal(c.poppy, 20);
+  assert.equal(c.poppy_seed, 20);
   assert.equal(c.vial, 50);
-  assert.equal(c.heroin_powder, 40);
+  assert.equal(c.weak_heroin_powder, 40);
   assert.equal(c.cut_heroin, 45);
-  assert.equal(c.vial_heroin, 95);
-  assert.equal(c.honey, 72.5);
+  assert.equal(c.vial_heroin, 57.5); // (4 × 45 + 1 × 50) / 4
+  assert.equal(c.honey, 53.75);
 });
 
 test("itemValues = build cost, final overridden to reference price", () => {
   const v = itemValues(catalog, recipes, lines);
-  assert.equal(v.poppy, 20);
+  assert.equal(v.poppy_seed, 20);
   assert.equal(v.cut_heroin, 45);
   assert.equal(v.honey, 125);
 });
 
 test("farmValue back-solves a farmed $/unit so the final hits the margin target", () => {
   const f = farmValue(catalog, recipes, line, 0.4);
-  assert.ok(Math.abs(f - 12.5 / 0.4375) < 1e-6); // ≈ $28.57
+  assert.ok(Math.abs(f - 31.25 / 0.4375) < 1e-6); // ≈ $71.43
   const cat = catalog.map((c) => (c.source === "farmed" ? { ...c, value: f } : c));
   assert.ok(Math.abs(buildCosts(cat, recipes).honey - 75) < 1e-6);
 });
 
 test("itemValues(margin) auto-prices farmed inputs; bought + final untouched", () => {
   const v = itemValues(catalog, recipes, lines, 0.4);
-  const f = 12.5 / 0.4375;
-  assert.ok(Math.abs(v.poppy - f) < 1e-6);
+  const f = 31.25 / 0.4375;
+  assert.ok(Math.abs(v.poppy_seed - f) < 1e-6);
   assert.ok(Math.abs(v.acetone - f) < 1e-6); // single shared farmed value
   assert.equal(v.vial, 50);
   assert.equal(v.honey, 125);
@@ -110,12 +110,12 @@ test("itemValues(margin) auto-prices farmed inputs; bought + final untouched", (
 
 test("higher margin → cheaper farmed inputs, clamped at 0", () => {
   assert.ok(farmValue(catalog, recipes, line, 0.3) > farmValue(catalog, recipes, line, 0.4));
-  assert.equal(farmValue(catalog, recipes, line, 0.5), 0);
+  assert.equal(farmValue(catalog, recipes, line, 0.7), 0); // target $37.50 < the $43.75 bought-only cost → nothing left
 });
 
 test("liveEntries drops voided originals and void markers", () => {
-  const e1 = dep("a", "poppy", 100);
-  const e2 = dep("b", "poppy", 50);
+  const e1 = dep("a", "poppy_seed", 100);
+  const e2 = dep("b", "poppy_seed", 50);
   const live = liveEntries([e1, voidOf(e1.id), e2]);
   assert.equal(live.length, 1);
   assert.equal(live[0].id, e2.id);
@@ -126,8 +126,8 @@ test("liveEntries drops voided originals and void markers", () => {
 test("golden: the DESIGN-v2 §4 worked cycle ties to the cent", () => {
   const entries = [
     buy("marco", "vial", 200), // capital 200 × $50 = 10,000
-    depBy("carrier", "vinny", "poppy", 600), // farm 600 × $20 = 12,000 — credit follows the doer
-    proc("tony", "refine", 480), // labor 480 × $25 = 12,000
+    depBy("carrier", "vinny", "poppy_seed", 600), // farm 600 × $20 = 12,000 — credit follows the doer
+    proc("tony", "dry", 480), // labor 480 × $25 = 12,000
     sell("rico", "honey", 1700, 80000), // commission 8% = 6,400
     adv("vinny", 5000),
   ];
@@ -148,7 +148,7 @@ test("golden: the DESIGN-v2 §4 worked cycle ties to the cent", () => {
 test("accrueTabs: advanceable = earned − advances − withdrawals", () => {
   const tabs = accrueTabs({
     config, catalog, recipes, lines,
-    entries: [depBy("x", "vinny", "poppy", 600), adv("vinny", 5000)],
+    entries: [depBy("x", "vinny", "poppy_seed", 600), adv("vinny", 5000)],
   });
   const t = tabs.get("vinny")!;
   assert.equal(t.farm, 12000);
@@ -157,7 +157,7 @@ test("accrueTabs: advanceable = earned − advances − withdrawals", () => {
 });
 
 test("a cash withdrawal is payout-neutral (works like a self-advance)", () => {
-  const base = [dep("a", "poppy", 100), sell("a", "honey", 80, 10000)];
+  const base = [dep("a", "poppy_seed", 100), sell("a", "honey", 80, 10000)];
   const plain = run(base, { a: 3 });
   const withWd = run([...base, wdCash("a", 2000)], { a: 3 });
   assert.equal(Math.round(plain.perMember[0].net), 10000);
@@ -166,12 +166,12 @@ test("a cash withdrawal is payout-neutral (works like a self-advance)", () => {
 });
 
 test("an item withdrawal feeds the fund — the member buys it from the crew", () => {
-  // carol funds, alice farms, bob takes 100 poppy ($2,000) for himself
+  // carol funds, alice farms, bob takes 100 poppy_seed ($2,000) for himself
   const entries = [
     fundCash("carol", 10000),
-    dep("alice", "poppy", 100),
+    dep("alice", "poppy_seed", 100),
     sell("carol", "honey", 40, 5000),
-    wdItem("bob", "poppy", 100),
+    wdItem("bob", "poppy_seed", 100),
   ];
   const r = run(entries, { carol: 5, alice: 5, bob: 5 });
   assert.equal(r.loss, false);
@@ -183,10 +183,10 @@ test("an item withdrawal feeds the fund — the member buys it from the crew", (
 });
 
 test("a loss charged to a member debits their tab; the crew fund is spared", () => {
-  const base = [dep("a", "poppy", 100), dep("b", "poppy", 100), sell("a", "honey", 80, 10000)];
+  const base = [dep("a", "poppy_seed", 100), dep("b", "poppy_seed", 100), sell("a", "honey", 80, 10000)];
   const plain = run(base, { a: 3, b: 3 });
   const charged = run(
-    [...base, loss({ itemId: "poppy", qty: 50, house: "raw", cause: "busted", charge: "b" })],
+    [...base, loss({ itemId: "poppy_seed", qty: 50, house: "raw", cause: "busted", charge: "b" })],
     { a: 3, b: 3 }
   );
   // b eats the $1,000 (50 × $20); it lands in the fund, so a's cut grows
@@ -197,7 +197,7 @@ test("a loss charged to a member debits their tab; the crew fund is spared", () 
 });
 
 test("a crew-shared cash loss shrinks the fund, not anyone's work pay", () => {
-  const base = [dep("a", "poppy", 100), sell("a", "honey", 80, 10000)];
+  const base = [dep("a", "poppy_seed", 100), sell("a", "honey", 80, 10000)];
   const plain = run(base, { a: 3 });
   const robbed = run([...base, loss({ cash: 3000, cause: "robbed" })], { a: 3 });
   assert.equal(robbed.fund, plain.fund - 3000);
@@ -206,7 +206,7 @@ test("a crew-shared cash loss shrinks the fund, not anyone's work pay", () => {
 });
 
 test("/spend shrinks the fund", () => {
-  const base = [dep("a", "poppy", 100), sell("a", "honey", 80, 10000)];
+  const base = [dep("a", "poppy_seed", 100), sell("a", "honey", 80, 10000)];
   const r = run([...base, spend(1500)], { a: 3 });
   assert.equal(r.fund, run(base, { a: 3 }).fund - 1500);
 });
@@ -224,7 +224,7 @@ test("loss guard: capital reimbursed pro-rata first, shortfall carries over", ()
 
 test("loss guard: capital is senior to work pay", () => {
   // 10,000 cash on hand; marco fronted 10,000, tony is owed 10,000 labor
-  const entries = [fundCash("marco", 10000), proc("tony", "refine", 400)];
+  const entries = [fundCash("marco", 10000), proc("tony", "dry", 400)];
   const r = run(entries, { marco: 1, tony: 4 });
   assert.equal(r.loss, true);
   assert.deepEqual(netOf(r), { marco: 10000, tony: 0 }); // capital home first
@@ -243,7 +243,7 @@ test("opening claims are reimbursed in the next cycle before the fund splits", (
 });
 
 test("only contributors share the fund; idle rank-holders get nothing", () => {
-  const entries = [dep("a", "poppy", 100), sell("a", "honey", 80, 10000), adv("idle", 0)];
+  const entries = [dep("a", "poppy_seed", 100), sell("a", "honey", 80, 10000), adv("idle", 0)];
   const r = run(entries, { a: 5, idle: 1 });
   const idle = r.perMember.find((p) => p.userId === "idle");
   assert.equal(idle?.rankShare ?? 0, 0);
@@ -252,7 +252,7 @@ test("only contributors share the fund; idle rank-holders get nothing", () => {
 
 test("voided entries vanish from the payout", () => {
   const big = buy("a", "vial", 100); // would be 5,000 capital
-  const entries = [big, voidOf(big.id), dep("a", "poppy", 10), sell("a", "honey", 10, 1000)];
+  const entries = [big, voidOf(big.id), dep("a", "poppy_seed", 10), sell("a", "honey", 10, 1000)];
   const r = run(entries, { a: 3 });
   assert.equal(r.perMember[0].capital, 0);
   assert.equal(Math.round(sumNet(r)), 1000);
@@ -260,7 +260,7 @@ test("voided entries vanish from the payout", () => {
 });
 
 test("unmapped member settles at level 5", () => {
-  const r = run([dep("a", "poppy", 100), dep("b", "poppy", 100), sell("a", "honey", 80, 10000)], { a: 1 });
+  const r = run([dep("a", "poppy_seed", 100), dep("b", "poppy_seed", 100), sell("a", "honey", 80, 10000)], { a: 1 });
   assert.equal(r.perMember.find((p) => p.userId === "b")!.level, 5);
   assert.ok(r.tiesOut);
 });
@@ -280,15 +280,15 @@ test("process consumes base inputs from raw and produced inputs from product", (
 
 test("buys land in their house; transfers move stock; cash flows through money", () => {
   const entries = [
-    buy("a", "poppy", 100, "raw"),
-    E("transfer", "a", { transfer: { itemId: "poppy", qty: 40, from: "raw", to: "product" } }),
+    buy("a", "poppy_seed", 100, "raw"),
+    E("transfer", "a", { transfer: { itemId: "poppy_seed", qty: 40, from: "raw", to: "product" } }),
     fundCash("b", 5000),
     adv("c", 1000),
     spend(500),
   ];
   const inv = treasuryInventory(entries, recipes, catalog);
-  assert.equal(inv.raw.poppy, 60);
-  assert.equal(inv.product.poppy, 40);
+  assert.equal(inv.raw.poppy_seed, 60);
+  assert.equal(inv.product.poppy_seed, 40);
   assert.equal(inv.cash, 3500);
 });
 
@@ -325,12 +325,12 @@ test("a loss can hit a member's holding", () => {
 
 test("reconcile pins an absolute count at its point in the replay", () => {
   const entries = [
-    dep("a", "poppy", 500),
-    E("reconcile", "officer", { reconcile: { itemId: "poppy", count: 480, house: "raw" } }),
-    dep("a", "poppy", 20),
+    dep("a", "poppy_seed", 500),
+    E("reconcile", "officer", { reconcile: { itemId: "poppy_seed", count: 480, house: "raw" } }),
+    dep("a", "poppy_seed", 20),
   ];
   const inv = treasuryInventory(entries, recipes, catalog);
-  assert.equal(inv.raw.poppy, 500); // 480 pinned + 20 after
+  assert.equal(inv.raw.poppy_seed, 500); // 480 pinned + 20 after
 });
 
 test("a payout entry drains the money house; goods and holdings persist", () => {
