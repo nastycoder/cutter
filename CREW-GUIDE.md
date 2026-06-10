@@ -37,13 +37,18 @@ Farmed it yourself? That's your farm pay. **Holding it for someone who farmed it
 > `credit:` makes sure the person who **actually farmed it** gets paid — not whoever's
 > carrying it. Credit always follows the person who did the work.
 
-**Bought supplies with your own cash** — in 🌿 **#raw-house**:
+**Buying with your own cash** — supplies in 🌿 **#raw-house**, finished product in 🧪 **#product-house**:
 ```
 /buy item:Vial qty:200
 ```
-No need to type a price — Cutter knows the market price from the catalog ($50/vial → $10,000).
-You get that **$10,000 back** off the top when we settle — buying supplies is fronting capital,
-not a donation.
+For standard market supplies you don't type a price — Cutter knows it from the catalog
+($50/vial → $10,000). **Buying in bulk off another player** — say a big lot of finished product
+for the crew to flip — add what you actually paid:
+```
+/buy item:Cocaine bag qty:500 cost:400000
+```
+Either way you get that money **back** off the top when we settle — buying is fronting capital,
+not a donation. When the crew sells the lot for more, the markup drops into the fund.
 
 **Cook a step** — in 🧪 **#product-house**:
 ```
@@ -153,7 +158,7 @@ happened and who did it.
 | You're… | Run | Where |
 |---|---|---|
 | banking raw materials | `/deposit item: qty: [credit:@who]` | 🌿 raw |
-| buying supplies | `/buy item: qty:` | 🌿 raw |
+| buying supplies / bulk product | `/buy item: qty: [cost:]` | 🌿 raw / 🧪 product |
 | cooking | `/process line: step: made: [credit:@who]` | 🧪 product |
 | moving stock | `/transfer item: qty: to:#house` | anywhere |
 | selling | `/sale product: qty: cash: [by:@who]` | 💰 money |
