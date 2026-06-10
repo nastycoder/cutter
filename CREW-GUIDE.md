@@ -69,6 +69,16 @@ Name the **product** — the money house handles sales from every line, so Cutte
 what moved. The cash lands in the money house. Whoever sold it earns **commission** — hazard
 pay for holding the heat. Someone else moved it? `by:@who`.
 
+**Taking product out to sell** — pull it, sell what you can, bring back the rest:
+```
+/checkout product:Cocaine bag qty:200      ← you're now holding 200 for the crew
+/sale product:Cocaine bag qty:150 cash:150000
+/return product:Cocaine bag qty:50         ← 50 didn't move, back on the shelf
+```
+Checking out **isn't** taking it for yourself — it's crew product in your hands, and it doesn't
+touch your pay. It just has to square up: **what you took out = what you sold + what you brought
+back.** Whatever's still out shows on `/holding`. If it got taken off you, log it as a loss (below).
+
 ---
 
 ## How you get paid
@@ -136,6 +146,23 @@ the next `/payout`, so it all squares up. Check what you've got coming anytime:
 
 ---
 
+## Busted or robbed
+
+It happens — a house gets raided, you get jacked leaving a deal, product spoils. Log it so the
+books stay honest:
+```
+/loss item:Cocaine bag qty:200 cause:busted
+/loss cash:50000 cause:robbed note:"hit leaving the deal"
+```
+- **Anyone can log a loss** the second it happens. Officers can wipe a bad one — and if you
+  **get it back**, an officer just reverses it and the stock's restored.
+- **The crew shares it by default** — the lost value comes out of the profit, so everyone's cut
+  takes a small hit. Cost of running together.
+- If a loss is clearly on one person — caught slipping, lost a personal run — an officer can
+  **put it on them** so it comes off their cut, not the crew's.
+- **Nobody ever ends up owing.** If a loss is bigger than the profit, Cutter spreads what's left
+  so no one goes negative.
+
 ## Keeping it straight
 
 - **`/me`** — your standing this cycle: what you've put in and what you'll clear.
@@ -158,7 +185,10 @@ happened and who did it.
 | buying supplies / product | `/buy item: qty:` | 🌿 raw / 🧪 product |
 | cooking | `/process line: step: made: [credit:@who]` | 🧪 product |
 | moving stock | `/transfer item: qty: to:#house` | anywhere |
+| taking product out to sell | `/checkout product: qty:` | 🧪 product |
 | selling | `/sale product: qty: cash: [by:@who]` | 💰 money |
+| bringing the rest back | `/return product: qty:` | 🧪 product |
+| reporting a loss | `/loss item:\|cash: cause: [charge:@m]` | where it happened |
 | checking your cut | `/owed` · `/me` | 💰 money |
 | needing cash now | ask an officer for `/advance` | 💰 money |
 | cashing the crew out | `/payout` *(officer)* | 💰 money |

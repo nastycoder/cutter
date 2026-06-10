@@ -83,6 +83,40 @@ advanceable_m = (capital_m + farm_m + labor_m + commission_m) − advances_m
 `/advance @m amount:` hands over cash now (logged); it's reconciled at `/payout` via the
 `− advances_m` term. This is the "I need some money" flow — full or partial, by availability.
 
+### 3.5 Loss (busted / robbed / spoiled)
+
+A loss removes value from the treasury and is recorded on the ledger (cause + note + reporter):
+
+- **Goods** leave the house's inventory; **cash** leaves the money house.
+- **Crew-shared (default):** lost goods never become revenue and lost cash is gone, so the loss
+  comes out of the **fund** — everyone's rank-cut shrinks. The crew carries its own risk.
+- **Charged to a member (officer):** `charge:@m` debits the loss value (at catalog) against that
+  member's tab, so they personally eat it and the crew fund is spared.
+- **No one goes negative:** if a loss is catastrophic (past all profit, into capital/work), the
+  loss-branch pro-rates remaining cash.
+- **Anyone may record** a loss in the moment; officers can **`/void`** a bogus one — and a
+  recovered loss (busted product returned, goods got back) is simply a voided loss entry that
+  restores the inventory/cash.
+
+### 3.6 Checkout & return — product going out to sell
+
+Product usually leaves a house in someone's hands before it's sold. That custody is tracked so a
+selling run reconciles cleanly:
+
+- **`/checkout product: qty:`** — pulls product from #product-house into your **holding** (you're
+  now carrying it). It is **not** a withdrawal — it doesn't touch your tab; it's crew product in
+  your custody.
+- **`/sale product: qty: cash:`** — draws from the seller's holding first (then the house), books
+  revenue + commission.
+- **`/return product: qty:`** — puts unsold product back in the house from your holding.
+- **`/holding [@member]`** — what product someone has out right now. Total product = house + all
+  holdings, so nothing is double-counted.
+
+A run reconciles when the holding returns to zero: **checked out = sold + returned**. So *"took
+out 200, sold 150, put 50 back"* is `/checkout 200` → `/sale 150` → `/return 50`, holding back to
+0. Anything still outstanding is product in the wind — return it, or log a `/loss` if it got
+taken (a loss can hit a member's holding, not just a house).
+
 ## 4. Worked example (one cycle)
 
 Labor rate $25/unit, commission 8%, ranks 5/4/3/2/1.
@@ -114,7 +148,7 @@ PK = GUILD#<gid>
 PK = LEDGER#<gid>
   SK C<cycle:0000>#<snowflakeId> → entry { type, actor, credit, ts, house, payload }
        types: deposit | buy | fund | process | transfer | sale | withdraw |
-              advance | spend | reconcile
+              advance | spend | reconcile | loss | checkout | return
   (inventory is a replay of ALL entries; contribution accrual replays the CURRENT cycle only)
 
 PK = PAYOUT#<gid>
@@ -138,9 +172,13 @@ Cross-house actions name their destination. Reports/payout live in **#money-hous
 | #money | `/fund-cash amount:` *(deposit cash)* | fund the treasury with cash; **capital** owed back |
 | #raw→#product | `/process line: step: made: [credit:@who]` | consume raw → product; **labor pay** to credit |
 | any | `/transfer item: qty: to:#house` | move stock between houses (logistics; no pay effect) |
-| #money | `/sale product: qty: cash: [by:@who]` | product → cash; **commission** to seller |
+| #product | `/checkout product: qty:` | take product into your **holding** to go sell (not a withdrawal; no tab effect) |
+| #money | `/sale product: qty: cash: [by:@who]` | sell from holding then house → cash; **commission** to seller |
+| #product | `/return product: qty:` | put unsold product back from your holding |
+| #treasury | `/holding [@member]` | product a member has checked out (out = sold + returned + still out) |
 | any house | `/reconcile item: count:` | officer logs real in-game count; bot records shrinkage vs expected |
 | any | `/withdraw item:\|cash: qty:` | take out for personal use; valued, **deducted from your tab** |
+| house / #money | `/loss item:\|cash: qty: cause: [charge:@m] [note:]` | record busted/robbed/spoiled; pulls from inventory/cash; crew-shared, or officer `charge:` to a member. Anyone records; officers `/void` |
 | #treasury | `/owed [@member]` | live tab: earned this cycle, advances taken, advanceable now |
 | #treasury | `/advance @member amount:` | officer hands a partial advance against earned (logged) |
 | #treasury | `/payout` | settle the cycle: pay tabs + split fund by rank, archive, **reset** |
