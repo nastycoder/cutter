@@ -1,16 +1,18 @@
-// Domain repository — typed read/write of guild config, lines, catalog, recipes, ranks.
+// Domain repository — typed read/write of guild config, lines, catalog, recipes,
+// ranks, the treasury ledger, and payout archives.
 import type {
   Config,
+  ChannelKind,
   ProductLine,
   CatalogItem,
   RecipeStep,
   LedgerEntry,
+  MemberPayout,
 } from "@cutter/shared";
 import * as db from "./db";
 
 export const DEFAULT_CONFIG: Config = {
   laborRate: 25,
-  workSplitPct: 0.7,
   commissionPct: 0.08,
   targetMargin: 0.4,
   rankMultipliers: { 1: 5, 2: 4, 3: 3, 4: 2, 5: 1 },
@@ -21,15 +23,16 @@ export async function getConfig(gid: string): Promise<Config> {
   if (!raw) return { ...DEFAULT_CONFIG };
   return {
     laborRate: raw.laborRate ?? DEFAULT_CONFIG.laborRate,
-    workSplitPct: raw.workSplitPct ?? DEFAULT_CONFIG.workSplitPct,
     commissionPct: raw.commissionPct ?? DEFAULT_CONFIG.commissionPct,
     targetMargin: raw.targetMargin ?? DEFAULT_CONFIG.targetMargin,
     rankMultipliers: raw.rankMultipliers ?? DEFAULT_CONFIG.rankMultipliers,
     officerRoleId: raw.officerRoleId,
     operationsCategoryId: raw.operationsCategoryId,
-    archiveCategoryId: raw.archiveCategoryId,
     guideChannelId: raw.guideChannelId,
-    guideDeckPosted: raw.guideDeckPosted,
+    guidePosted: raw.guidePosted,
+    houseChannels: raw.houseChannels,
+    cycleNumber: raw.cycleNumber,
+    cycleStartedAt: raw.cycleStartedAt,
   };
 }
 
@@ -80,74 +83,56 @@ export async function deleteRank(gid: string, roleId: string): Promise<void> {
   await db.deleteItem(db.gpk(gid), `RANK#${roleId}`);
 }
 
-// ---- jobs & ledger ----
-export interface JobMeta {
-  id: string;
-  name: string;
-  lineId: string;
-  status: "open" | "settling" | "closed";
-  channelId: string;
-  guildId: string;
-  createdBy: string;
-  createdAt: number;
+// ---- house channels ----
+
+export async function putChannelHouse(gid: string, channelId: string, house: ChannelKind): Promise<void> {
+  await db.putItem({ PK: db.gpk(gid), SK: `CHANNEL#${channelId}`, house });
 }
 
-export async function createJob(gid: string, job: JobMeta): Promise<void> {
-  await db.putItem({
-    PK: `JOB#${job.id}`,
-    SK: "META",
-    ...job,
-    GSI1PK: `${db.gpk(gid)}#${job.status}`,
-    GSI1SK: String(job.createdAt),
-  });
-  await db.putItem({ PK: db.gpk(gid), SK: `CHANNEL#${job.channelId}`, openJobId: job.id });
+export async function getChannelHouse(gid: string, channelId: string): Promise<ChannelKind | undefined> {
+  const p = await db.getItem<{ house?: ChannelKind }>(db.gpk(gid), `CHANNEL#${channelId}`);
+  return p?.house;
 }
 
-export async function getJob(jobId: string): Promise<JobMeta | undefined> {
-  return db.getItem<JobMeta>(`JOB#${jobId}`, "META");
+// ---- treasury ledger (cycle-prefixed, one partition per guild) ----
+
+const lpk = (gid: string) => `LEDGER#${gid}`;
+const cyc = (n: number) => `C${String(n).padStart(4, "0")}`;
+/** Snowflakes are decimal strings of varying length — zero-pad so SKs sort chronologically. */
+const entrySk = (cycle: number, id: string) => `${cyc(cycle)}#${id.padStart(20, "0")}`;
+
+export async function appendEntry(gid: string, entry: LedgerEntry): Promise<void> {
+  await db.putItem({ PK: lpk(gid), SK: entrySk(entry.cycle, entry.id), ...entry });
 }
 
-export async function listOpenJobs(gid: string): Promise<JobMeta[]> {
-  return db.queryGSI1<JobMeta>(`${db.gpk(gid)}#open`);
+/** Entries of one cycle, in chronological order (contribution accrual). */
+export async function listCycleEntries(gid: string, cycle: number): Promise<LedgerEntry[]> {
+  return db.queryPrefix<LedgerEntry>(lpk(gid), `${cyc(cycle)}#`);
 }
 
-export async function getChannelJobId(gid: string, channelId: string): Promise<string | undefined> {
-  const p = await db.getItem<{ openJobId?: string }>(db.gpk(gid), `CHANNEL#${channelId}`);
-  return p?.openJobId;
+/** Every entry ever — inventory is a replay of the full ledger. */
+export async function listAllEntries(gid: string): Promise<LedgerEntry[]> {
+  return db.queryPrefix<LedgerEntry>(lpk(gid), "C");
 }
 
-export async function setJobStatus(
-  gid: string,
-  jobId: string,
-  status: JobMeta["status"]
-): Promise<void> {
-  const job = await getJob(jobId);
-  if (!job) return;
-  job.status = status;
-  await db.putItem({
-    PK: `JOB#${jobId}`,
-    SK: "META",
-    ...job,
-    GSI1PK: `${db.gpk(gid)}#${status}`,
-    GSI1SK: String(job.createdAt),
-  });
-  // Keep the channel→job pointer even when closed, so `/job reopen` can find it.
-  // Each job has its own (never-reused) channel, so there's no collision.
+// ---- payout archive ----
+
+export interface PayoutRecord {
+  cycle: number;
+  ts: number;
+  cash: number;
+  fund: number;
+  loss: boolean;
+  perMember: MemberPayout[];
+  carryover: Record<string, number>; // unreimbursed capital → next cycle's opening claims
 }
 
-export async function appendEntry(jobId: string, entry: LedgerEntry): Promise<void> {
-  await db.putItem({ PK: `JOB#${jobId}`, SK: `ENTRY#${entry.id}`, ...entry });
+export async function putPayoutRecord(gid: string, rec: PayoutRecord): Promise<void> {
+  await db.putItem({ PK: `PAYOUT#${gid}`, SK: cyc(rec.cycle), ...rec });
 }
 
-export async function listEntries(jobId: string): Promise<LedgerEntry[]> {
-  return db.queryPrefix<LedgerEntry>(`JOB#${jobId}`, "ENTRY#");
-}
-
-export async function putPayout(
-  jobId: string,
-  p: { userId: string; level: number; reimbursed: number; commission: number; work: number; rank: number; net: number }
-): Promise<void> {
-  await db.putItem({ PK: `JOB#${jobId}`, SK: `PAYOUT#${p.userId}`, ...p });
+export async function getPayoutRecord(gid: string, cycle: number): Promise<PayoutRecord | undefined> {
+  return db.getItem<PayoutRecord>(`PAYOUT#${gid}`, cyc(cycle));
 }
 
 /** Seed the honey product line (the chain we've fully specced) + default dials. */

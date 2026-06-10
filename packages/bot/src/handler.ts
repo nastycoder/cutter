@@ -7,39 +7,34 @@ import {
 import * as store from "./store";
 import * as rest from "./rest";
 import { getSecret } from "./secret";
-import { buildCosts, itemValues, inventory, settle, liveEntries } from "@cutter/engine";
-import type { Config } from "@cutter/shared";
+import {
+  payout,
+  accrueTabs,
+  advanceable,
+  itemValues,
+  treasuryInventory,
+  liveEntries,
+} from "@cutter/engine";
+import type {
+  Config,
+  ChannelKind,
+  House,
+  LedgerEntry,
+  CatalogItem,
+  RecipeStep,
+  ProductLine,
+  MemberTab,
+  LossCause,
+} from "@cutter/shared";
 import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda";
-import * as fs from "node:fs";
-import * as path from "node:path";
 
 const lambdaClient = new LambdaClient({});
-
-// Tutorial deck assets are bundled next to the handler (see infra commandHooks).
-const DECK_DIR = __dirname;
-function slideFiles(): string[] {
-  try {
-    return fs
-      .readdirSync(DECK_DIR)
-      .filter((n) => /^tutorial-\d+\.png$/.test(n))
-      .sort();
-  } catch {
-    return [];
-  }
-}
-function readDeck(name: string): Uint8Array | null {
-  try {
-    return fs.readFileSync(path.join(DECK_DIR, name));
-  } catch {
-    return null;
-  }
-}
 
 // Commands whose work exceeds Discord's 3s window are deferred: we ACK immediately,
 // then this Lambda invokes itself asynchronously to do the work and edit the reply.
 function isDeferrable(i: any): boolean {
   const n = commandName(i);
-  return n === "settle" || n === "setup" || (n === "job" && subcommand(i) === "open");
+  return n === "setup" || n === "payout";
 }
 
 async function invokeSelf(payload: unknown): Promise<void> {
@@ -56,13 +51,11 @@ async function runFollowup(i: any): Promise<void> {
   try {
     const n = commandName(i);
     const content =
-      n === "settle"
-        ? await settleWork(i)
-        : n === "setup"
-          ? await setupWork(i)
-          : n === "job" && subcommand(i) === "open"
-            ? await jobOpenWork(i)
-            : "Unknown deferred command.";
+      n === "setup"
+        ? await setupWork(i)
+        : n === "payout"
+          ? await payoutWork(i)
+          : "Unknown deferred command.";
     await rest.editOriginal(i.application_id, i.token, content);
   } catch (e) {
     console.error("followup error", e);
@@ -91,12 +84,6 @@ import {
   channelId,
   snowflakeTs,
 } from "./discord";
-
-interface ProxyEvent {
-  headers?: Record<string, string | undefined>;
-  body?: string;
-  isBase64Encoded?: boolean;
-}
 
 export async function handler(event: any) {
   // Async self-invocation: do the deferred work, then edit the original reply.
@@ -137,7 +124,7 @@ export async function handler(event: any) {
     if (isDeferrable(interaction)) {
       try {
         await invokeSelf({ source: "followup", interaction });
-        const ephemeral = ["settle", "setup"].includes(commandName(interaction));
+        const ephemeral = commandName(interaction) === "setup";
         return json({
           type: InteractionResponseType.DeferredChannelMessageWithSource,
           ...(ephemeral ? { data: { flags: 64 } } : {}),
@@ -171,29 +158,148 @@ async function route(i: any) {
       return handleRank(i);
     case "recipe":
       return handleRecipe(i);
-    case "job":
-      return handleJob(i);
     case "deposit":
       return handleDeposit(i);
+    case "buy":
+      return handleBuy(i);
+    case "fund-cash":
+      return handleFundCash(i);
     case "process":
       return handleProcess(i);
-    case "withdraw":
-      return handleWithdraw(i);
+    case "transfer":
+      return handleTransfer(i);
+    case "checkout":
+      return handleCheckout(i);
     case "sale":
       return handleSale(i);
+    case "return":
+      return handleReturn(i);
+    case "holding":
+      return handleHolding(i);
+    case "reconcile":
+      return handleReconcile(i);
+    case "withdraw":
+      return handleWithdraw(i);
+    case "loss":
+      return handleLoss(i);
+    case "void":
+      return handleVoid(i);
+    case "owed":
+      return handleOwed(i);
+    case "advance":
+      return handleAdvance(i);
+    case "payout":
+      return reply(await payoutWork(i), false);
+    case "fund":
+      return handleFund(i);
+    case "spend":
+      return handleSpend(i);
+    case "stash":
+      return handleStash(i);
+    case "me":
+      return handleMe(i);
     case "ledger":
       return handleLedger(i);
     case "status":
       return handleStatus(i);
-    case "settle":
-      return reply(await settleWork(i), true);
-    case "me":
-      return handleMe(i);
-    case "void":
-      return handleVoid(i);
     default:
       return reply(`Unknown command: \`${commandName(i)}\``);
   }
+}
+
+// ---- shared loading & helpers ----
+
+interface GuildData {
+  config: Config;
+  catalog: CatalogItem[];
+  recipes: RecipeStep[];
+  lines: ProductLine[];
+}
+
+async function loadGuild(gid: string): Promise<GuildData> {
+  const [config, catalog, recipes, lines] = await Promise.all([
+    store.getConfig(gid),
+    store.listCatalog(gid),
+    store.listRecipes(gid),
+    store.listLines(gid),
+  ]);
+  return { config, catalog, recipes, lines };
+}
+
+const money = (n: number) => `$${Math.round(n).toLocaleString()}`;
+const qty = (n: number) => `${+n.toFixed(1)}`.replace(/\.0$/, "");
+
+const HOUSE_LABEL: Record<ChannelKind, string> = {
+  raw: "🌿 raw house",
+  product: "🧪 product house",
+  money: "💰 money house",
+  treasury: "🏦 treasury",
+};
+
+function houseLink(config: Config, kind: ChannelKind): string {
+  const id = config.houseChannels?.[kind];
+  return id ? `<#${id}>` : HOUSE_LABEL[kind];
+}
+
+type GoodsHouse = "raw" | "product";
+
+/** The house a goods item naturally lives in: base → raw, produced → product. */
+function kindHouse(item: CatalogItem): GoodsHouse {
+  return item.kind === "base" ? "raw" : "product";
+}
+
+/** Resolve the goods house for a command: the channel's house wins, else the item's kind. */
+async function goodsHouse(i: any, item: CatalogItem): Promise<GoodsHouse> {
+  const h = await store.getChannelHouse(guildId(i), channelId(i));
+  return h === "raw" || h === "product" ? h : kindHouse(item);
+}
+
+function needsSetup(config: Config): string | undefined {
+  if (!config.cycleNumber) return "⚠️ The treasury isn't set up yet — an officer needs to run `/setup` first.";
+  return undefined;
+}
+
+function mkEntry(i: any, config: Config, type: LedgerEntry["type"], payload: Partial<LedgerEntry>): LedgerEntry {
+  return {
+    id: i.id,
+    type,
+    actor: actorId(i),
+    ts: snowflakeTs(i.id),
+    cycle: config.cycleNumber!,
+    ...payload,
+  } as LedgerEntry;
+}
+
+function valuesOf(g: GuildData): Record<string, number> {
+  return itemValues(g.catalog, g.recipes, g.lines, g.config.targetMargin ?? 0);
+}
+
+function itemName(g: GuildData, id: string): string {
+  return g.catalog.find((c) => c.id === id)?.name ?? id;
+}
+
+function findItem(g: GuildData, id: string): CatalogItem | undefined {
+  return g.catalog.find((c) => c.id === id);
+}
+
+// ---- /setup ----
+
+const HOUSE_CHANNELS: { kind: ChannelKind; name: string; topic: string }[] = [
+  { kind: "raw", name: "🌿-raw-house", topic: "Raw materials — /deposit · /buy · what's farmed and bought" },
+  { kind: "product", name: "🧪-product-house", topic: "Product — /process · /checkout · /return" },
+  { kind: "money", name: "💰-money-house", topic: "The cash — /sale · /fund-cash · /advance" },
+  { kind: "treasury", name: "🏦-treasury", topic: "The books — /status · /owed · /fund · /payout" },
+];
+
+async function ensureCategory(gid: string, config: Config): Promise<string> {
+  if (config.operationsCategoryId) {
+    if (await rest.getChannel(config.operationsCategoryId)) return config.operationsCategoryId;
+    config.operationsCategoryId = undefined;
+  }
+  const cat = await rest.createChannel(gid, { name: "Operations", type: 4 });
+  config.operationsCategoryId = cat.id;
+  await store.putConfig(gid, config);
+  return cat.id;
 }
 
 async function setupWork(i: any): Promise<MsgData | string> {
@@ -205,34 +311,46 @@ async function setupWork(i: any): Promise<MsgData | string> {
   const officerRoleId = option<string>(i, "officer");
   await store.seedDefaults(gid);
   config = { ...config, officerRoleId };
+  config.cycleNumber ??= 1;
+  config.cycleStartedAt ??= snowflakeTs(i.id);
   await store.putConfig(gid, config);
 
-  // create (once) a read-only guide channel under Operations, and upload the deck once
+  const created: string[] = [];
+  try {
+    const opsCat = await ensureCategory(gid, config);
+    config.houseChannels ??= {};
+    for (const h of HOUSE_CHANNELS) {
+      const existing = config.houseChannels[h.kind];
+      if (existing && (await rest.getChannel(existing))) continue;
+      const ch = await rest.createChannel(gid, { name: h.name, type: 0, parent_id: opsCat, topic: h.topic });
+      config.houseChannels[h.kind] = ch.id;
+      await store.putChannelHouse(gid, ch.id, h.kind);
+      created.push(`<#${ch.id}>`);
+    }
+    await store.putConfig(gid, config);
+  } catch (e) {
+    console.error("house channels failed", e);
+    return "⚠️ I couldn't create the house channels — make sure I have **Manage Channels**, then run `/setup` again.";
+  }
+
+  // read-only guide channel; (re)post the crew guide once
   let guideLine = "";
   try {
-    // if the stored guide channel was deleted, forget it (and the deck) so we rebuild
     if (config.guideChannelId && !(await rest.getChannel(config.guideChannelId))) {
       config.guideChannelId = undefined;
-      config.guideDeckPosted = false;
+      config.guidePosted = false;
     }
     if (!config.guideChannelId) {
-      const opsCat = await ensureCategory(gid, config, "operationsCategoryId", "Operations");
       const ch = await rest.createChannel(gid, {
         name: "📖-cutter-guide",
         type: 0,
-        parent_id: opsCat,
-        topic: "How to use Cutter",
+        parent_id: config.operationsCategoryId,
+        topic: "How we run & get paid",
       });
       config.guideChannelId = ch.id;
       await store.putConfig(gid, config);
     }
-    // upload the tutorial deck once (also covers servers set up before it existed):
-    // slides inline as a gallery + the PDF to download. No rich-text guide — the
-    // deck is the guide.
-    if (config.guideChannelId && !config.guideDeckPosted) {
-      // Read-only for @everyone, but explicitly ALLOW the bot to post & attach —
-      // otherwise the upload 403s, since the bot otherwise inherits @everyone's
-      // (now denied) Send Messages. The bot's user id == the application id.
+    if (config.guideChannelId && !config.guidePosted) {
       const { appId } = await getSecret();
       await rest.modifyChannel(config.guideChannelId, {
         permission_overwrites: [
@@ -240,38 +358,27 @@ async function setupWork(i: any): Promise<MsgData | string> {
           { id: appId, type: 1, allow: "52224" }, // bot: View+Send+EmbedLinks+AttachFiles
         ],
       });
-      const slides = slideFiles()
-        .map((n) => ({ name: n, data: readDeck(n), contentType: "image/png" }))
-        .filter((s): s is { name: string; data: Uint8Array; contentType: string } => s.data != null);
-      // Discord caps attachments at 10 per message — post the slides in batches.
-      for (let k = 0; k < slides.length; k += 10) {
-        await rest.postFiles(
-          config.guideChannelId,
-          slides.slice(k, k + 10),
-          k === 0 ? "📑 **Cutter tutorial** — swipe through the slides:" : undefined
-        );
+      for (const msg of guideMessages(config)) {
+        await rest.postMessage(config.guideChannelId, msg);
       }
-      const pdf = readDeck("Cutter-Tutorial.pdf");
-      if (pdf) {
-        await rest.postFiles(config.guideChannelId, [{ name: "Cutter-Tutorial.pdf", data: pdf, contentType: "application/pdf" }], "📄 Full deck (PDF) — download or print:");
-      }
-      if (slides.length || pdf) {
-        config.guideDeckPosted = true;
-        await store.putConfig(gid, config);
-      }
+      config.guidePosted = true;
+      await store.putConfig(gid, config);
     }
-    guideLine = `Tutorial deck → <#${config.guideChannelId}> (read-only)`;
+    guideLine = `Crew guide → <#${config.guideChannelId}> (read-only)`;
   } catch (e) {
     console.error("guide channel failed", e);
   }
 
   return embed({
-    title: "🛠️ Cutter is set up",
+    title: "🛠️ Cutter is set up — the treasury is open",
     color: COLORS.gold,
     description: [
       `Officer role: <@&${officerRoleId}>`,
+      `Houses: ${houseLink(config, "raw")} · ${houseLink(config, "product")} · ${houseLink(config, "money")} · ${houseLink(config, "treasury")}`,
+      created.length ? `Created: ${created.join(" ")}` : "",
+      `Cycle **${config.cycleNumber}** is live — log work as it happens, \`/payout\` settles it.`,
       "Seeded product line **Honey** (catalog · recipes)",
-      "Default dials: labor $25/unit · 70/30 · 8% commission · ranks 5/4/3/2/1",
+      "Default dials: labor $25/unit · 8% commission · 40% farm margin · ranks 5/4/3/2/1",
       guideLine,
       "",
       "Next: map ranks with `/rank map`, tune with `/config`.",
@@ -281,52 +388,867 @@ async function setupWork(i: any): Promise<MsgData | string> {
   });
 }
 
-async function handleConfig(i: any) {
+/** The crew guide, condensed from CREW-GUIDE.md into postable embeds. */
+function guideMessages(config: Config): MsgData[] {
+  const raw = houseLink(config, "raw");
+  const product = houseLink(config, "product");
+  const moneyCh = houseLink(config, "money");
+  const treasury = houseLink(config, "treasury");
+  return [
+    embed({
+      title: "⚜ Cutter — How We Run & Get Paid",
+      color: COLORS.gold,
+      description: [
+        "Cutter is our bookkeeper. It tracks every bit of work the crew puts in — farming, funding, cooking, selling — and pays everyone right at payout. Run a few simple commands as you work; Cutter keeps the tally.",
+        "",
+        "**The stash houses** — the books mirror the real shelves:",
+        `${raw} — raw materials (farmed + bought supplies)`,
+        `${product} — everything cooked, half-steps to finished product`,
+        `${moneyCh} — the cash`,
+        `${treasury} — the books: \`/status\` · \`/owed\` · \`/payout\``,
+        "",
+        "Run commands **in the house you're working in** — Cutter knows which house you mean from the channel.",
+      ].join("\n"),
+    }),
+    embed({
+      title: "📥 Logging your work",
+      color: COLORS.green,
+      description: [
+        `**Bring in materials** — in ${raw}: \`/deposit item: qty:\` — farmed it yourself? That's your **farm pay**. Carrying someone else's? \`credit:@who\` — **credit follows the doer, not the carrier.**`,
+        "",
+        "**Buy with your own cash** — `/buy item: qty:` — no price to type; everything's valued at **catalog**, reimbursed off the top at payout. Score a deal or overpay on your own — that's yours.",
+        "",
+        `**Cook** — in ${product}: \`/process line: step: made:\` — report what you **made**; Cutter pulls the inputs, adds the product, pays the **labor**. Cooking for someone? \`credit:@who\`.`,
+        "",
+        `**Sell** — in ${moneyCh}: \`/sale product: qty: cash:\` — the cash lands in the money house, the seller earns **commission**. Someone else moved it? \`by:@who\`.`,
+        "",
+        "**Cash the crew's way** — `/fund-cash amount:` — fronted cash is capital, reimbursed at payout.",
+        "",
+        "**Move stock** — `/transfer item: qty: to:#house` — logistics only, no pay effect.",
+      ].join("\n"),
+    }),
+    embed({
+      title: "🎒 Taking product out to sell",
+      color: COLORS.blue,
+      description: [
+        "`/checkout product: qty:` — you're now **holding** crew product (not a withdrawal, doesn't touch your pay).",
+        "`/sale product: qty: cash:` — sells from what you're holding first.",
+        "`/return product: qty:` — the rest goes back on the shelf.",
+        "",
+        "It has to square: **out = sold + returned**. `/holding` shows what anyone still has out. Got jacked? Log a `/loss`.",
+      ].join("\n"),
+    }),
+    embed({
+      title: "💰 How you get paid",
+      color: COLORS.gold,
+      description: [
+        "**① Paid for your work, at its value** — whatever your rank: capital back, farm pay, cook pay per unit, commission on your sales.",
+        "",
+        "**② Rank cut of the fund** — the profit left after all work is paid splits **by rank** among everyone who contributed this cycle: I 5× · II 4× · III 3× · IV 2× · V 1×.",
+        "",
+        `The books run in **cycles**. An officer's \`/payout\` (in ${treasury}) pays every tab + rank shares, then starts a fresh cycle — inventory stays, the tally resets. **It's payday.**`,
+        "",
+        "**Need cash early?** An officer can `/advance @you amount:` against what you've already earned — it squares up automatically at payout. Check your tab anytime: `/owed`.",
+      ].join("\n"),
+    }),
+    embed({
+      title: "🚨 Busted or robbed",
+      color: COLORS.red,
+      description: [
+        "`/loss item: qty: cause:` or `/loss cash: cause:` — anyone logs it the moment it happens.",
+        "",
+        "• **Crew-shared by default** — the hit comes out of the profit, everyone's cut takes a little. Cost of running together.",
+        "• Clearly on one person? An officer can `charge:@member` so it comes off their cut, not the crew's.",
+        "• **Nobody ever ends up owing** — catastrophic losses spread what's left so no one goes negative.",
+        "• Got it back? An officer `/void`s the loss and the stock's restored.",
+      ].join("\n"),
+    }),
+    embed({
+      title: "📋 Keeping it straight",
+      color: COLORS.gray,
+      description: [
+        "`/me` your standing · `/owed` your tab · `/status` the whole treasury · `/ledger` the blow-by-blow · `/stash` a house's shelf · `/holding` product out · `/reconcile` officer count vs books · `/withdraw` personal use (valued, off your tab)",
+        "",
+        "**Put in the work. Cutter pays you right.**",
+      ].join("\n"),
+    }),
+  ];
+}
+
+// ---- logging commands ----
+
+async function handleDeposit(i: any) {
   const gid = guildId(i);
-  const config = await store.getConfig(gid);
-  const sub = subcommand(i);
-
-  if (sub === "set") {
-    if (!isOfficer(i, config)) return reply("⛔ Officers only.");
-    const dial = option<string>(i, "dial")!;
-    const value = option<number>(i, "value")!;
-    if (dial === "labor-rate") config.laborRate = value;
-    else if (dial === "work-split") config.workSplitPct = value / 100;
-    else if (dial === "commission") config.commissionPct = value / 100;
-    else if (dial === "farm-margin") config.targetMargin = value / 100;
-    await store.putConfig(gid, config);
-    return reply(embed({ description: `✅ Updated **${dial}** → ${value}.`, color: COLORS.green }));
-  }
-
-  if (sub === "panel") {
-    if (!isOfficer(i, config)) return reply("⛔ Officers only.");
-    return reply(renderPanel(config, DIALS[0].key), true);
-  }
-
-  // view
-  const lines = await store.listLines(gid);
-  const refs =
-    lines.map((l) => `${l.name} $${l.referencePrice}`).join(" · ") || "—";
-  const mults = Object.entries(config.rankMultipliers)
-    .sort((a, b) => Number(a[0]) - Number(b[0]))
-    .map(([lvl, w]) => `${w}×`)
-    .join(" / ");
+  const g = await loadGuild(gid);
+  const gate = needsSetup(g.config);
+  if (gate) return reply(gate);
+  const itemId = option<string>(i, "item")!;
+  const n = option<number>(i, "qty")!;
+  if (!(n > 0)) return reply("⚠️ Quantity must be positive.");
+  const item = findItem(g, itemId);
+  if (!item) return reply("⚠️ Pick an item from the list.");
+  const credit = option<string>(i, "credit") ?? actorId(i);
+  const house = await goodsHouse(i, item);
+  await store.appendEntry(gid, mkEntry(i, g.config, "deposit", { deposit: { itemId, qty: n, house, credit } }));
+  const v = (valuesOf(g)[itemId] ?? 0) * n;
   return reply(
     embed({
-      title: "⚙️ Economy dials",
+      description:
+        `📥 **${qty(n)}× ${item.name}** into ${houseLink(g.config, house)} — farm pay **${money(v)}** to <@${credit}>` +
+        (credit !== actorId(i) ? ` _(banked by <@${actorId(i)}>)_` : ""),
+      color: COLORS.green,
+    }),
+    false
+  );
+}
+
+async function handleBuy(i: any) {
+  const gid = guildId(i);
+  const g = await loadGuild(gid);
+  const gate = needsSetup(g.config);
+  if (gate) return reply(gate);
+  const itemId = option<string>(i, "item")!;
+  const n = option<number>(i, "qty")!;
+  if (!(n > 0)) return reply("⚠️ Quantity must be positive.");
+  const item = findItem(g, itemId);
+  if (!item) return reply("⚠️ Pick an item from the list.");
+  const house = await goodsHouse(i, item);
+  const capital = (valuesOf(g)[itemId] ?? 0) * n;
+  await store.appendEntry(gid, mkEntry(i, g.config, "buy", { buy: { itemId, qty: n, house } }));
+  return reply(
+    embed({
+      description: `🛒 <@${actorId(i)}> bought **${qty(n)}× ${item.name}** → ${houseLink(g.config, house)} — capital **${money(capital)}** owed back (catalog)`,
+      color: COLORS.green,
+    }),
+    false
+  );
+}
+
+async function handleFundCash(i: any) {
+  const gid = guildId(i);
+  const config = await store.getConfig(gid);
+  const gate = needsSetup(config);
+  if (gate) return reply(gate);
+  const amount = option<number>(i, "amount")!;
+  if (!(amount > 0)) return reply("⚠️ Amount must be positive.");
+  await store.appendEntry(gid, mkEntry(i, config, "fund", { fund: { cash: amount } }));
+  return reply(
+    embed({
+      description: `💰 <@${actorId(i)}> funded the treasury with **${money(amount)}** → ${houseLink(config, "money")} — capital owed back`,
+      color: COLORS.green,
+    }),
+    false
+  );
+}
+
+async function handleProcess(i: any) {
+  const gid = guildId(i);
+  const g = await loadGuild(gid);
+  const gate = needsSetup(g.config);
+  if (gate) return reply(gate);
+  const lineId = option<string>(i, "line")!;
+  const step = option<string>(i, "step")!;
+  const made = option<number>(i, "made")!;
+  if (!(made > 0)) return reply("⚠️ `made` must be positive.");
+  const line = g.lines.find((l) => l.id === lineId);
+  if (!line) return reply("⚠️ Pick a product line from the list.");
+  const recipe = g.recipes.find((r) => r.lineId === lineId && r.step === step);
+  if (!recipe) return reply(`⚠️ **${line.name}** has no step \`${step}\` — check \`/recipe list\`.`);
+  const credit = option<string>(i, "credit") ?? actorId(i);
+  await store.appendEntry(gid, mkEntry(i, g.config, "process", { process: { lineId, step, made, credit } }));
+  const y = typeof recipe.output.yield === "number" ? recipe.output.yield : (recipe.output.yield[0] + recipe.output.yield[1]) / 2;
+  const crafts = y > 0 ? made / y : 0;
+  const consumed = recipe.inputs.map((inp) => `${qty(crafts * inp.qty)}× ${itemName(g, inp.itemId)}`).join(" + ");
+  return reply(
+    embed({
+      description:
+        `⚗️ **${line.name} / ${step}** → **${qty(made)}× ${itemName(g, recipe.output.itemId)}** — labor **${money(made * g.config.laborRate)}** to <@${credit}>` +
+        `\n_consumed: ${consumed}_`,
       color: COLORS.gold,
+    }),
+    false
+  );
+}
+
+async function handleTransfer(i: any) {
+  const gid = guildId(i);
+  const g = await loadGuild(gid);
+  const gate = needsSetup(g.config);
+  if (gate) return reply(gate);
+  const itemId = option<string>(i, "item")!;
+  const n = option<number>(i, "qty")!;
+  if (!(n > 0)) return reply("⚠️ Quantity must be positive.");
+  const item = findItem(g, itemId);
+  if (!item) return reply("⚠️ Pick an item from the list.");
+  const toChannel = option<string>(i, "to")!;
+  const to = await store.getChannelHouse(gid, toChannel);
+  if (to !== "raw" && to !== "product") {
+    return reply(`⚠️ \`to:\` must be a goods house — ${houseLink(g.config, "raw")} or ${houseLink(g.config, "product")}.`);
+  }
+  // from = this channel's house; otherwise wherever the item has stock
+  let from = await store.getChannelHouse(gid, channelId(i));
+  if (from !== "raw" && from !== "product") {
+    const inv = treasuryInventory(await store.listAllEntries(gid), g.recipes, g.catalog);
+    const inRaw = (inv.raw[itemId] ?? 0) > 0;
+    const inProduct = (inv.product[itemId] ?? 0) > 0;
+    from = inRaw && !inProduct ? "raw" : inProduct && !inRaw ? "product" : undefined;
+    if (!from) {
+      return reply(`⚠️ Can't tell which house **${item.name}** is leaving — run this in the source house channel.`);
+    }
+  }
+  if (from === to) return reply("⚠️ That's the same house.");
+  await store.appendEntry(gid, mkEntry(i, g.config, "transfer", { transfer: { itemId, qty: n, from, to } }));
+  return reply(
+    embed({
+      description: `🚚 <@${actorId(i)}> moved **${qty(n)}× ${item.name}** ${houseLink(g.config, from)} → ${houseLink(g.config, to)}`,
+      color: COLORS.blue,
+    }),
+    false
+  );
+}
+
+async function handleCheckout(i: any) {
+  const gid = guildId(i);
+  const g = await loadGuild(gid);
+  const gate = needsSetup(g.config);
+  if (gate) return reply(gate);
+  const itemId = option<string>(i, "product")!;
+  const n = option<number>(i, "qty")!;
+  if (!(n > 0)) return reply("⚠️ Quantity must be positive.");
+  const item = findItem(g, itemId);
+  if (!item) return reply("⚠️ Pick a product from the list.");
+  const inv = treasuryInventory(await store.listAllEntries(gid), g.recipes, g.catalog);
+  const onHand = inv.product[itemId] ?? 0;
+  if (n > onHand + 1e-9) {
+    return reply(`⚠️ Only **${qty(onHand)}× ${item.name}** in ${houseLink(g.config, "product")} — can't check out ${qty(n)}.`);
+  }
+  await store.appendEntry(gid, mkEntry(i, g.config, "checkout", { checkout: { itemId, qty: n } }));
+  const holding = (inv.holdings[actorId(i)]?.[itemId] ?? 0) + n;
+  return reply(
+    embed({
+      description: `🎒 <@${actorId(i)}> checked out **${qty(n)}× ${item.name}** to sell — now holding **${qty(holding)}** for the crew`,
+      color: COLORS.blue,
+    }),
+    false
+  );
+}
+
+async function handleSale(i: any) {
+  const gid = guildId(i);
+  const g = await loadGuild(gid);
+  const gate = needsSetup(g.config);
+  if (gate) return reply(gate);
+  const itemId = option<string>(i, "product")!;
+  const n = option<number>(i, "qty")!;
+  const cash = option<number>(i, "cash")!;
+  if (!(n > 0) || !(cash >= 0)) return reply("⚠️ Check the numbers.");
+  const item = findItem(g, itemId);
+  if (!item) return reply("⚠️ Pick a product from the list.");
+  const by = option<string>(i, "by") ?? actorId(i);
+  const inv = treasuryInventory(await store.listAllEntries(gid), g.recipes, g.catalog);
+  const held = inv.holdings[by]?.[itemId] ?? 0;
+  const fromHolding = Math.min(held, n);
+  const fromHouse = n - fromHolding;
+  await store.appendEntry(gid, mkEntry(i, g.config, "sale", { sale: { itemId, qty: n, cash, by } }));
+  const src =
+    fromHolding > 0 && fromHouse > 0
+      ? ` _(${qty(fromHolding)} from holding + ${qty(fromHouse)} from the house)_`
+      : fromHolding > 0
+        ? ` _(holding: ${qty(held - fromHolding)} still out)_`
+        : "";
+  const short = fromHouse > (inv.product[itemId] ?? 0) + 1e-9
+    ? `\n⚠️ The books only show ${qty(inv.product[itemId] ?? 0)} in the house — \`/reconcile\` if the shelf disagrees.`
+    : "";
+  return reply(
+    embed({
+      description:
+        `💵 <@${by}> sold **${qty(n)}× ${item.name}** for **${money(cash)}** — commission **${money(cash * g.config.commissionPct)}**${src}${short}`,
+      color: COLORS.green,
+    }),
+    false
+  );
+}
+
+async function handleReturn(i: any) {
+  const gid = guildId(i);
+  const g = await loadGuild(gid);
+  const gate = needsSetup(g.config);
+  if (gate) return reply(gate);
+  const itemId = option<string>(i, "product")!;
+  const n = option<number>(i, "qty")!;
+  if (!(n > 0)) return reply("⚠️ Quantity must be positive.");
+  const item = findItem(g, itemId);
+  if (!item) return reply("⚠️ Pick a product from the list.");
+  const inv = treasuryInventory(await store.listAllEntries(gid), g.recipes, g.catalog);
+  const held = inv.holdings[actorId(i)]?.[itemId] ?? 0;
+  if (n > held + 1e-9) {
+    return reply(`⚠️ You're only holding **${qty(held)}× ${item.name}** — can't return ${qty(n)}.`);
+  }
+  await store.appendEntry(gid, mkEntry(i, g.config, "return", { return: { itemId, qty: n } }));
+  const left = held - n;
+  return reply(
+    embed({
+      description:
+        `↩️ <@${actorId(i)}> returned **${qty(n)}× ${item.name}** to ${houseLink(g.config, "product")}` +
+        (left > 1e-9 ? ` — still holding **${qty(left)}**` : " — holding squared ✅"),
+      color: COLORS.green,
+    }),
+    false
+  );
+}
+
+async function handleHolding(i: any) {
+  const gid = guildId(i);
+  const g = await loadGuild(gid);
+  const gate = needsSetup(g.config);
+  if (gate) return reply(gate);
+  const member = option<string>(i, "member");
+  const inv = treasuryInventory(await store.listAllEntries(gid), g.recipes, g.catalog);
+  const rows: string[] = [];
+  for (const [uid, items] of Object.entries(inv.holdings)) {
+    if (member && uid !== member) continue;
+    const list = Object.entries(items)
+      .filter(([, q]) => Math.abs(q) > 1e-9)
+      .map(([id, q]) => `${qty(q)}× ${itemName(g, id)}`)
+      .join(" · ");
+    if (list) rows.push(`• <@${uid}> — ${list}`);
+  }
+  if (!rows.length) {
+    return reply(member ? `🎒 <@${member}> has nothing checked out.` : "🎒 Nothing's checked out — every run is squared.");
+  }
+  return reply(embed({ title: "🎒 Product out right now", color: COLORS.blue, description: rows.join("\n") }));
+}
+
+async function handleReconcile(i: any) {
+  const gid = guildId(i);
+  const g = await loadGuild(gid);
+  const gate = needsSetup(g.config);
+  if (gate) return reply(gate);
+  if (!isOfficer(i, g.config)) return reply("⛔ Officers only.");
+  const itemId = option<string>(i, "item")!;
+  const count = option<number>(i, "count")!;
+  if (!(count >= 0)) return reply("⚠️ Count can't be negative.");
+  const item = findItem(g, itemId);
+  if (!item) return reply("⚠️ Pick an item from the list.");
+  const house = await goodsHouse(i, item);
+  const inv = treasuryInventory(await store.listAllEntries(gid), g.recipes, g.catalog);
+  const expected = inv[house][itemId] ?? 0;
+  const diff = count - expected;
+  await store.appendEntry(gid, mkEntry(i, g.config, "reconcile", { reconcile: { itemId, count, house } }));
+  return reply(
+    embed({
+      description:
+        `📋 <@${actorId(i)}> counted **${qty(count)}× ${item.name}** in ${houseLink(g.config, house)} — books said ${qty(expected)}` +
+        (Math.abs(diff) > 1e-9 ? ` → **${diff > 0 ? "+" : ""}${qty(diff)}** recorded` : " ✅ books match"),
+      color: Math.abs(diff) > 1e-9 ? COLORS.gold : COLORS.green,
+    }),
+    false
+  );
+}
+
+async function handleWithdraw(i: any) {
+  const gid = guildId(i);
+  const g = await loadGuild(gid);
+  const gate = needsSetup(g.config);
+  if (gate) return reply(gate);
+  const cash = option<number>(i, "cash");
+  const itemId = option<string>(i, "item");
+  const n = option<number>(i, "qty");
+  if (cash != null) {
+    if (!(cash > 0)) return reply("⚠️ Amount must be positive.");
+    await store.appendEntry(gid, mkEntry(i, g.config, "withdraw", { withdraw: { cash, house: "money" } }));
+    return reply(
+      embed({ description: `📤 <@${actorId(i)}> withdrew **${money(cash)}** for personal use — off their tab at payout`, color: COLORS.blue }),
+      false
+    );
+  }
+  if (itemId && n != null) {
+    if (!(n > 0)) return reply("⚠️ Quantity must be positive.");
+    const item = findItem(g, itemId);
+    if (!item) return reply("⚠️ Pick an item from the list.");
+    const house = await goodsHouse(i, item);
+    const v = (valuesOf(g)[itemId] ?? 0) * n;
+    await store.appendEntry(gid, mkEntry(i, g.config, "withdraw", { withdraw: { itemId, qty: n, house } }));
+    return reply(
+      embed({
+        description: `📤 <@${actorId(i)}> withdrew **${qty(n)}× ${item.name}** (${money(v)}) for personal use — off their tab at payout`,
+        color: COLORS.blue,
+      }),
+      false
+    );
+  }
+  return reply("Provide `item` + `qty`, or `cash`.");
+}
+
+async function handleLoss(i: any) {
+  const gid = guildId(i);
+  const g = await loadGuild(gid);
+  const gate = needsSetup(g.config);
+  if (gate) return reply(gate);
+  const cause = (option<string>(i, "cause") ?? "other") as LossCause;
+  const note = option<string>(i, "note");
+  const charge = option<string>(i, "charge");
+  const holder = option<string>(i, "holder");
+  if (charge && !isOfficer(i, g.config)) {
+    return reply("⛔ Only an officer can charge a loss to a member — log it without `charge:` and flag them.");
+  }
+  const cash = option<number>(i, "cash");
+  const itemId = option<string>(i, "item");
+  const n = option<number>(i, "qty");
+
+  let body: string;
+  if (cash != null) {
+    if (!(cash > 0)) return reply("⚠️ Amount must be positive.");
+    await store.appendEntry(gid, mkEntry(i, g.config, "loss", { loss: { cash, cause, charge, note } }));
+    body = `🚨 **${money(cash)}** lost (${cause})`;
+  } else if (itemId && n != null) {
+    if (!(n > 0)) return reply("⚠️ Quantity must be positive.");
+    const item = findItem(g, itemId);
+    if (!item) return reply("⚠️ Pick an item from the list.");
+    if (holder) {
+      const inv = treasuryInventory(await store.listAllEntries(gid), g.recipes, g.catalog);
+      const held = inv.holdings[holder]?.[itemId] ?? 0;
+      if (n > held + 1e-9) {
+        return reply(`⚠️ <@${holder}> is only holding ${qty(held)}× ${item.name} — check \`/holding\`.`);
+      }
+      await store.appendEntry(gid, mkEntry(i, g.config, "loss", { loss: { itemId, qty: n, holder, cause, charge, note } }));
+      body = `🚨 **${qty(n)}× ${item.name}** lost from <@${holder}>'s holding (${cause})`;
+    } else {
+      const house = await goodsHouse(i, item);
+      await store.appendEntry(gid, mkEntry(i, g.config, "loss", { loss: { itemId, qty: n, house, cause, charge, note } }));
+      body = `🚨 **${qty(n)}× ${item.name}** lost from ${houseLink(g.config, house)} (${cause})`;
+    }
+  } else {
+    return reply("Provide `item` + `qty`, or `cash`.");
+  }
+  const chargedV = cash ?? (valuesOf(g)[itemId!] ?? 0) * (n ?? 0);
+  return reply(
+    embed({
+      description: [
+        body,
+        charge ? `⚖️ Charged to <@${charge}> — **${money(chargedV)}** off their cut.` : "🤝 Crew-shared — comes out of the fund.",
+        note ? `_"${note}"_` : "",
+        "Recovered later? An officer can `/void` this entry.",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      color: COLORS.red,
+    }),
+    false
+  );
+}
+
+async function handleVoid(i: any) {
+  const gid = guildId(i);
+  const g = await loadGuild(gid);
+  const gate = needsSetup(g.config);
+  if (gate) return reply(gate);
+  if (!isOfficer(i, g.config)) return reply("⛔ Officers only.");
+  const entryId = option<string>(i, "entry")!;
+  const entries = await store.listCycleEntries(gid, g.config.cycleNumber!);
+  const target = entries.find((e) => e.id === entryId);
+  if (!target) return reply("⚠️ Pick an entry from the list (only this cycle's entries can be voided).");
+  if (target.type === "void") return reply("⚠️ That's already a void marker.");
+  if (target.type === "payout") return reply("⚠️ A payout can't be voided.");
+  await store.appendEntry(gid, mkEntry(i, g.config, "void", { voids: entryId }));
+  return reply(
+    embed({ description: `🚫 <@${actorId(i)}> voided: ${entryLine(g, target)}`, color: COLORS.red }),
+    false
+  );
+}
+
+// ---- treasury reports & payout ----
+
+async function cycleState(gid: string, g: GuildData) {
+  const [cycleEntries, allEntries, prev] = await Promise.all([
+    store.listCycleEntries(gid, g.config.cycleNumber!),
+    store.listAllEntries(gid),
+    g.config.cycleNumber! > 1 ? store.getPayoutRecord(gid, g.config.cycleNumber! - 1) : Promise.resolve(undefined),
+  ]);
+  const openingClaims = prev?.carryover ?? {};
+  const tabs = accrueTabs({ config: g.config, catalog: g.catalog, recipes: g.recipes, lines: g.lines, entries: cycleEntries, openingClaims });
+  const inv = treasuryInventory(allEntries, g.recipes, g.catalog);
+  const owed = [...tabs.values()].reduce((s, t) => s + Math.max(0, t.earned - t.advances - t.withdrawals), 0);
+  return { cycleEntries, allEntries, openingClaims, tabs, inv, owed, fund: inv.cash - owed };
+}
+
+function tabLines(t: MemberTab): string {
+  const parts: string[] = [];
+  if (t.capital) parts.push(`capital ${money(t.capital)}`);
+  if (t.farm) parts.push(`farm ${money(t.farm)}`);
+  if (t.labor) parts.push(`labor ${money(t.labor)}`);
+  if (t.commission) parts.push(`commission ${money(t.commission)}`);
+  if (t.advances) parts.push(`advanced −${money(t.advances)}`);
+  if (t.withdrawals) parts.push(`taken −${money(t.withdrawals)}`);
+  return parts.join(" · ") || "nothing yet";
+}
+
+async function handleOwed(i: any) {
+  const gid = guildId(i);
+  const g = await loadGuild(gid);
+  const gate = needsSetup(g.config);
+  if (gate) return reply(gate);
+  const member = option<string>(i, "member") ?? actorId(i);
+  const s = await cycleState(gid, g);
+  const t = s.tabs.get(member);
+  if (!t) return reply(`🧾 <@${member}> has no contributions in cycle ${g.config.cycleNumber} yet.`);
+  const cap = Math.min(advanceable(t), Math.max(0, s.inv.cash));
+  return reply(
+    embed({
+      title: `🧾 Cycle ${g.config.cycleNumber} tab`,
+      color: COLORS.gold,
+      description: [
+        `<@${member}> — ${tabLines(t)}`,
+        "",
+        `**Earned so far: ${money(t.earned)}**${t.advances || t.withdrawals ? ` · still owed ${money(Math.max(0, t.earned - t.advances - t.withdrawals))}` : ""}`,
+        `Advanceable now: **${money(cap)}** _(rank share lands at payout)_`,
+      ].join("\n"),
+    })
+  );
+}
+
+async function handleAdvance(i: any) {
+  const gid = guildId(i);
+  const g = await loadGuild(gid);
+  const gate = needsSetup(g.config);
+  if (gate) return reply(gate);
+  if (!isOfficer(i, g.config)) return reply("⛔ Officers only — members ask an officer for an advance.");
+  const member = option<string>(i, "member")!;
+  const amount = option<number>(i, "amount")!;
+  if (!(amount > 0)) return reply("⚠️ Amount must be positive.");
+  const s = await cycleState(gid, g);
+  const t = s.tabs.get(member);
+  const cap = t ? advanceable(t) : 0;
+  if (amount > cap + 1e-9) {
+    return reply(`⚠️ <@${member}> has **${money(cap)}** advanceable (earned − already advanced) — can't advance ${money(amount)}.`);
+  }
+  if (amount > s.inv.cash + 1e-9) {
+    return reply(`⚠️ The money house only has **${money(s.inv.cash)}**.`);
+  }
+  await store.appendEntry(gid, mkEntry(i, g.config, "advance", { advance: { userId: member, amount } }));
+  return reply(
+    embed({
+      description: `🤝 <@${actorId(i)}> advanced **${money(amount)}** to <@${member}> — squares up at payout _(${money(cap - amount)} still advanceable)_`,
+      color: COLORS.green,
+    }),
+    false
+  );
+}
+
+async function handleSpend(i: any) {
+  const gid = guildId(i);
+  const g = await loadGuild(gid);
+  const gate = needsSetup(g.config);
+  if (gate) return reply(gate);
+  if (!isOfficer(i, g.config)) return reply("⛔ Officers only.");
+  const amount = option<number>(i, "amount")!;
+  const reason = option<string>(i, "reason")!;
+  if (!(amount > 0)) return reply("⚠️ Amount must be positive.");
+  const s = await cycleState(gid, g);
+  if (amount > s.inv.cash + 1e-9) {
+    return reply(`⚠️ The money house only has **${money(s.inv.cash)}**.`);
+  }
+  await store.appendEntry(gid, mkEntry(i, g.config, "spend", { spend: { amount, reason } }));
+  return reply(
+    embed({ description: `🧾 <@${actorId(i)}> spent **${money(amount)}** of crew cash — _${reason}_ (comes out of the fund)`, color: COLORS.gold }),
+    false
+  );
+}
+
+async function handleFund(i: any) {
+  const gid = guildId(i);
+  const g = await loadGuild(gid);
+  const gate = needsSetup(g.config);
+  if (gate) return reply(gate);
+  const s = await cycleState(gid, g);
+  return reply(
+    embed({
+      title: `💼 Cycle ${g.config.cycleNumber} — the fund`,
+      color: s.fund >= 0 ? COLORS.green : COLORS.red,
+      description: [
+        `Money house: **${money(s.inv.cash)}**`,
+        `Owed for work/capital so far: **${money(s.owed)}**`,
+        s.fund >= 0
+          ? `**Fund (profit if we paid out now): ${money(s.fund)}** — splits by rank at \`/payout\``
+          : `**Short ${money(-s.fund)}** — sales haven't covered work/capital yet`,
+      ].join("\n"),
+    })
+  );
+}
+
+async function handleStash(i: any) {
+  const gid = guildId(i);
+  const g = await loadGuild(gid);
+  const gate = needsSetup(g.config);
+  if (gate) return reply(gate);
+  const inv = treasuryInventory(await store.listAllEntries(gid), g.recipes, g.catalog);
+  const pick = option<string>(i, "house") as House | undefined;
+  const chHouse = await store.getChannelHouse(gid, channelId(i));
+  const wanted: House[] = pick ? [pick] : chHouse === "raw" || chHouse === "product" || chHouse === "money" ? [chHouse] : ["raw", "product", "money"];
+  const listOf = (rec: Record<string, number>) =>
+    Object.entries(rec)
+      .filter(([, q]) => Math.abs(q) > 1e-9)
+      .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+      .map(([id, q]) => `${itemName(g, id)} ×${qty(q)}`)
+      .join(" · ") || "empty";
+  const fields = wanted.map((h) => ({
+    name: HOUSE_LABEL[h],
+    value: h === "money" ? money(inv.cash) : listOf(inv[h]),
+  }));
+  const out = Object.entries(inv.holdings)
+    .map(([uid, items]) =>
+      Object.entries(items)
+        .filter(([, q]) => Math.abs(q) > 1e-9)
+        .map(([id, q]) => `<@${uid}> ${qty(q)}× ${itemName(g, id)}`)
+        .join(" · ")
+    )
+    .filter(Boolean)
+    .join(" · ");
+  if (!pick && out) fields.push({ name: "🎒 out with members", value: out });
+  return reply(embed({ title: "📦 Stash — expected counts (books)", color: COLORS.gold, fields }));
+}
+
+function bestLevel(roles: string[] | undefined, rankMap: Record<string, number>): number {
+  let best = 5;
+  for (const r of roles ?? []) {
+    const lvl = rankMap[r];
+    if (lvl != null && lvl < best) best = lvl;
+  }
+  return best;
+}
+
+async function handleMe(i: any) {
+  const gid = guildId(i);
+  const g = await loadGuild(gid);
+  const gate = needsSetup(g.config);
+  if (gate) return reply(gate);
+  const me = actorId(i);
+  const [s, ranks] = await Promise.all([cycleState(gid, g), store.listRanks(gid)]);
+  const rankMap = Object.fromEntries(ranks.map((r) => [r.roleId, r.level]));
+  const myLevel = bestLevel(i.member?.roles, rankMap);
+  const t = s.tabs.get(me);
+  const held = Object.entries(s.inv.holdings[me] ?? {})
+    .filter(([, q]) => Math.abs(q) > 1e-9)
+    .map(([id, q]) => `${qty(q)}× ${itemName(g, id)}`)
+    .join(" · ");
+  const fields = [
+    { name: "Rank", value: `Level ${myLevel} (${g.config.rankMultipliers[myLevel] ?? 1}×)`, inline: true },
+    { name: "Earned this cycle", value: t ? money(t.earned) : "$0", inline: true },
+    { name: "Advanceable", value: t ? money(Math.min(advanceable(t), Math.max(0, s.inv.cash))) : "$0", inline: true },
+  ];
+  if (held) fields.push({ name: "🎒 Holding", value: held, inline: false });
+  return reply(
+    embed({
+      title: `🧍 You — cycle ${g.config.cycleNumber}`,
+      color: COLORS.blue,
+      description: t
+        ? `${tabLines(t)}\n_Work is paid at its value; your rank share of the fund lands at \`/payout\`._`
+        : "_No contributions this cycle yet — anything you log lands on your tab._",
+      fields,
+    })
+  );
+}
+
+function entryLine(g: GuildData, e: LedgerEntry): string {
+  const who = `<@${e.actor}>`;
+  const nm = (id: string) => itemName(g, id);
+  if (e.type === "deposit" && e.deposit)
+    return `📥 ${who} +${qty(e.deposit.qty)}× ${nm(e.deposit.itemId)}${e.deposit.credit !== e.actor ? ` _(credit <@${e.deposit.credit}>)_` : ""}`;
+  if (e.type === "buy" && e.buy) return `🛒 ${who} bought ${qty(e.buy.qty)}× ${nm(e.buy.itemId)}`;
+  if (e.type === "fund" && e.fund) return `💰 ${who} funded ${money(e.fund.cash)}`;
+  if (e.type === "process" && e.process)
+    return `⚗️ <@${e.process.credit}> ${e.process.lineId}/${e.process.step} → ${qty(e.process.made)}`;
+  if (e.type === "transfer" && e.transfer)
+    return `🚚 ${who} ${qty(e.transfer.qty)}× ${nm(e.transfer.itemId)} ${e.transfer.from}→${e.transfer.to}`;
+  if (e.type === "sale" && e.sale) return `💵 <@${e.sale.by}> sold ${qty(e.sale.qty)}× ${nm(e.sale.itemId)} for ${money(e.sale.cash)}`;
+  if (e.type === "withdraw" && e.withdraw)
+    return e.withdraw.cash != null
+      ? `📤 ${who} −${money(e.withdraw.cash)}`
+      : `📤 ${who} −${qty(e.withdraw.qty ?? 0)}× ${nm(e.withdraw.itemId!)}`;
+  if (e.type === "advance" && e.advance) return `🤝 advance ${money(e.advance.amount)} → <@${e.advance.userId}>`;
+  if (e.type === "spend" && e.spend) return `🧾 spent ${money(e.spend.amount)} — ${e.spend.reason}`;
+  if (e.type === "reconcile" && e.reconcile)
+    return `📋 ${nm(e.reconcile.itemId)} counted at ${qty(e.reconcile.count)} (${e.reconcile.house})`;
+  if (e.type === "loss" && e.loss) {
+    const what = e.loss.cash != null ? money(e.loss.cash) : `${qty(e.loss.qty ?? 0)}× ${nm(e.loss.itemId!)}`;
+    const from = e.loss.holder ? ` from <@${e.loss.holder}>` : "";
+    return `🚨 lost ${what}${from} (${e.loss.cause})${e.loss.charge ? ` — charged <@${e.loss.charge}>` : ""}`;
+  }
+  if (e.type === "checkout" && e.checkout) return `🎒 ${who} checked out ${qty(e.checkout.qty)}× ${nm(e.checkout.itemId)}`;
+  if (e.type === "return" && e.return) return `↩️ ${who} returned ${qty(e.return.qty)}× ${nm(e.return.itemId)}`;
+  if (e.type === "payout" && e.payout) return `💰 payout — cycle settled, ${money(e.payout.total)} handed out`;
+  if (e.type === "void") return `🚫 ${who} voided an entry`;
+  return `• ${e.type}`;
+}
+
+function ledgerBody(g: GuildData, entries: LedgerEntry[], full = false): string {
+  const cycle = g.config.cycleNumber;
+  if (!entries.length) return `📜 **Cycle ${cycle}** — no entries yet.`;
+  const voided = new Set(entries.filter((e) => e.type === "void").map((e) => e.voids));
+  const list = full ? entries : entries.slice(-25);
+  const lines = list.map((e) => (voided.has(e.id) ? `~~${entryLine(g, e)}~~ _(voided)_` : entryLine(g, e)));
+  const more = !full && entries.length > 25 ? `\n_…${entries.length - 25} earlier this cycle_` : "";
+  return `📜 **Cycle ${cycle}** — ledger (${entries.length} entries)\n${lines.join("\n")}${more}`;
+}
+
+async function handleLedger(i: any) {
+  const gid = guildId(i);
+  const g = await loadGuild(gid);
+  const gate = needsSetup(g.config);
+  if (gate) return reply(gate);
+  const entries = await store.listCycleEntries(gid, g.config.cycleNumber!);
+  return reply(embed({ description: ledgerBody(g, entries), color: COLORS.gold }));
+}
+
+async function handleStatus(i: any) {
+  const gid = guildId(i);
+  const g = await loadGuild(gid);
+  const gate = needsSetup(g.config);
+  if (gate) return reply(gate);
+  const s = await cycleState(gid, g);
+  const listOf = (rec: Record<string, number>) =>
+    Object.entries(rec)
+      .filter(([, q]) => Math.abs(q) > 1e-9)
+      .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+      .slice(0, 8)
+      .map(([id, q]) => `${itemName(g, id)} ×${qty(q)}`)
+      .join(" · ") || "empty";
+  const contributors = [...s.tabs.values()]
+    .filter((t) => t.earned > 0)
+    .sort((a, b) => b.earned - a.earned)
+    .slice(0, 12)
+    .map((t) => `• <@${t.userId}> — ${tabLines(t)}`);
+  const claims = Object.entries(s.openingClaims).map(([u, v]) => `<@${u}> ${money(v)}`).join(" · ");
+  return reply(
+    embed({
+      title: `📊 Treasury — cycle ${g.config.cycleNumber}`,
+      color: s.fund >= 0 ? COLORS.green : COLORS.gold,
+      description: [
+        `Cash **${money(s.inv.cash)}** · owed for work **${money(s.owed)}** · fund **${money(Math.max(0, s.fund))}**`,
+        claims ? `Opening claims carried in: ${claims}` : "",
+        "",
+        contributors.length ? "**Contributors this cycle**\n" + contributors.join("\n") : "_No contributions this cycle yet._",
+      ]
+        .filter(Boolean)
+        .join("\n"),
       fields: [
-        { name: "Labor rate", value: `$${config.laborRate} / unit`, inline: true },
-        { name: "Work / Rank", value: `${Math.round(config.workSplitPct * 100)} / ${Math.round((1 - config.workSplitPct) * 100)}`, inline: true },
-        { name: "Commission", value: `${Math.round(config.commissionPct * 100)}%`, inline: true },
-        { name: "Farm margin", value: `${Math.round((config.targetMargin ?? 0) * 100)}% — farmed inputs auto-priced from product`, inline: false },
-        { name: "Rank weights (I→V)", value: mults, inline: false },
-        { name: "Reference prices", value: refs, inline: false },
-        { name: "Officer role", value: config.officerRoleId ? `<@&${config.officerRoleId}>` : "_unset_", inline: false },
+        { name: HOUSE_LABEL.raw, value: listOf(s.inv.raw) },
+        { name: HOUSE_LABEL.product, value: listOf(s.inv.product) },
       ],
     })
   );
 }
+
+/** Post text to a channel, splitting on newlines to stay under Discord's 2000-char limit. */
+async function postChunks(channelId: string, text: string): Promise<void> {
+  const chunks: string[] = [];
+  let buf = "";
+  for (const ln of text.split("\n")) {
+    if ((buf ? buf.length + 1 : 0) + ln.length > 1900) {
+      if (buf) chunks.push(buf);
+      buf = ln;
+    } else buf = buf ? `${buf}\n${ln}` : ln;
+  }
+  if (buf) chunks.push(buf);
+  for (const c of chunks) await rest.postMessage(channelId, c);
+}
+
+async function payoutWork(i: any): Promise<MsgData | string> {
+  const gid = guildId(i);
+  const g = await loadGuild(gid);
+  const gate = needsSetup(g.config);
+  if (gate) return gate;
+  if (!isOfficer(i, g.config)) return "⛔ Officers only — `/payout` settles the whole cycle.";
+
+  const cycle = g.config.cycleNumber!;
+  const s = await cycleState(gid, g);
+  if (![...s.tabs.values()].some((t) => t.earned > 0) && s.inv.cash <= 0) {
+    return `⚠️ Nothing to settle in cycle ${cycle} — no contributions and no cash.`;
+  }
+
+  // resolve each participant's rank level from their Discord roles
+  const ranks = await store.listRanks(gid);
+  const rankMap = Object.fromEntries(ranks.map((r) => [r.roleId, r.level]));
+  const levels = await Promise.all(
+    [...s.tabs.keys()].map(async (uid) => {
+      try {
+        const mem = await rest.getMember(gid, uid);
+        return [uid, bestLevel(mem.roles, rankMap)] as const;
+      } catch {
+        return [uid, 5] as const;
+      }
+    })
+  );
+
+  const result = payout({
+    config: g.config,
+    catalog: g.catalog,
+    recipes: g.recipes,
+    lines: g.lines,
+    entries: s.cycleEntries,
+    openingClaims: s.openingClaims,
+    cash: s.inv.cash,
+    memberLevels: Object.fromEntries(levels),
+  });
+
+  // archive, drain the money house, open the next cycle
+  await store.putPayoutRecord(gid, {
+    cycle,
+    ts: snowflakeTs(i.id),
+    cash: result.cash,
+    fund: result.fund,
+    loss: result.loss,
+    perMember: result.perMember,
+    carryover: result.carryover,
+  });
+  await store.appendEntry(gid, mkEntry(i, g.config, "payout", { payout: { total: result.cash } }));
+  g.config.cycleNumber = cycle + 1;
+  g.config.cycleStartedAt = snowflakeTs(i.id);
+  await store.putConfig(gid, g.config);
+
+  const rows = [...result.perMember]
+    .sort((a, b) => b.net - a.net)
+    .map((p) => {
+      const bits = [
+        p.capital ? `capital back ${money(p.capital)}` : "",
+        p.farm ? `farm ${money(p.farm)}` : "",
+        p.labor ? `labor ${money(p.labor)}` : "",
+        p.commission ? `commission ${money(p.commission)}` : "",
+        p.rankShare ? `rank ${money(p.rankShare)}` : "",
+        p.advances ? `advanced −${money(p.advances)}` : "",
+        p.withdrawals ? `taken −${money(p.withdrawals)}` : "",
+        p.forgiven ? `forgiven ${money(p.forgiven)}` : "",
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      return `**<@${p.userId}>** — hand them **${money(p.net)}**  _(${bits})_`;
+    });
+  const carry = Object.entries(result.carryover).map(([u, v]) => `<@${u}> ${money(v)}`).join(" · ");
+  const foot = result.loss
+    ? `⚠️ **Loss cycle** — cash didn't cover work/capital. Capital reimbursed first, pro-rata; no fund.` +
+      (carry ? `\nCarried to cycle ${cycle + 1} as opening claims: ${carry}` : "")
+    : `Cash ${money(result.cash)} − owed ${money(result.owed)} → fund **${money(result.fund)}** split by rank among contributors.` +
+      (result.tiesOut ? "" : " ⚠️ rounding mismatch.");
+  const unsold = Object.entries(s.inv.product).filter(([, q]) => q > 1e-9).length;
+  const payoutEmbed = embed({
+    title: `💰 Payday — cycle ${cycle} · ${money(result.cash)}`,
+    color: result.loss ? COLORS.red : COLORS.green,
+    description: [...rows, "", foot, unsold ? `📦 Inventory carries into cycle ${cycle + 1} (nothing resets but the tally).` : ""].filter(Boolean).join("\n"),
+  });
+
+  // post the dispute record (full cycle ledger + payout) to the treasury channel
+  const recordCh = g.config.houseChannels?.treasury ?? channelId(i);
+  try {
+    await postChunks(recordCh, ledgerBody(g, s.cycleEntries, true));
+    await rest.postMessage(recordCh, payoutEmbed);
+  } catch (e) {
+    console.error("payout record post failed", e);
+  }
+
+  return payoutEmbed;
+}
+
+// ---- autocomplete ----
 
 async function handleAutocomplete(i: any) {
   const f = focusedOption(i);
@@ -336,7 +1258,7 @@ async function handleAutocomplete(i: any) {
 
   if (f.name === "item") {
     let items = await store.listCatalog(gid);
-    if (subcommand(i) === "set") items = items.filter((it) => it.kind === "base");
+    if (commandName(i) === "catalog" && subcommand(i) === "set") items = items.filter((it) => it.kind === "base");
     return autocompleteResult(
       items
         .filter((it) => it.name.toLowerCase().includes(q) || it.id.includes(q))
@@ -346,42 +1268,48 @@ async function handleAutocomplete(i: any) {
         }))
     );
   }
-  if (f.name === "product" || f.name === "line") {
+  if (f.name === "line") {
     const lines = await store.listLines(gid);
     return autocompleteResult(
+      lines.filter((l) => l.name.toLowerCase().includes(q)).map((l) => ({ name: l.name, value: l.id }))
+    );
+  }
+  if (f.name === "product") {
+    const [lines, catalog] = await Promise.all([store.listLines(gid), store.listCatalog(gid)]);
+    const nameOf = (id: string) => catalog.find((c) => c.id === id)?.name ?? id;
+    return autocompleteResult(
       lines
-        .filter((l) => l.name.toLowerCase().includes(q))
-        .map((l) => ({ name: l.name, value: l.id }))
+        .map((l) => ({ name: `${nameOf(l.finalItemId)} (${l.name})`, value: l.finalItemId }))
+        .filter((c) => c.name.toLowerCase().includes(q))
     );
   }
   if (f.name === "step") {
-    const jobId = await store.getChannelJobId(gid, channelId(i));
-    const job = jobId ? await store.getJob(jobId) : undefined;
+    const lineId = option<string>(i, "line");
     const recipes = await store.listRecipes(gid);
     return autocompleteResult(
       recipes
-        .filter((r) => (!job || r.lineId === job.lineId) && r.step.toLowerCase().includes(q))
+        .filter((r) => (!lineId || r.lineId === lineId) && r.step.toLowerCase().includes(q))
         .map((r) => ({ name: `${r.step} → ${r.output.itemId}`, value: r.step }))
     );
   }
   if (f.name === "entry") {
-    const jobId = await store.getChannelJobId(gid, channelId(i));
-    if (!jobId) return autocompleteResult([]);
-    const entries = await store.listEntries(jobId);
-    const voided = new Set(entries.filter((e: any) => e.type === "void").map((e: any) => e.voids));
-    const label = (e: any): string => {
-      if (e.type === "deposit") return e.deposit.cash != null ? `deposit $${e.deposit.cash}` : `deposit ${e.deposit.qty}× ${e.deposit.itemId}`;
-      if (e.type === "withdraw") return e.withdraw.cash != null ? `withdraw $${e.withdraw.cash}` : `withdraw ${e.withdraw.qty}× ${e.withdraw.itemId}`;
-      if (e.type === "process") return `process ${e.process.step} → ${e.process.made}`;
-      if (e.type === "sale") return `sale ${e.sale.qty} for $${e.sale.cash}`;
-      return e.type;
-    };
+    const [config, catalog, recipes, lines] = await Promise.all([
+      store.getConfig(gid),
+      store.listCatalog(gid),
+      store.listRecipes(gid),
+      store.listLines(gid),
+    ]);
+    if (!config.cycleNumber) return autocompleteResult([]);
+    const g: GuildData = { config, catalog, recipes, lines };
+    const entries = await store.listCycleEntries(gid, config.cycleNumber);
+    const voided = new Set(entries.filter((e) => e.type === "void").map((e) => e.voids));
+    const strip = (s: string) => s.replace(/<@&?(\d+)>/g, "@$1").replace(/[*_~`]/g, "");
     return autocompleteResult(
-      (entries as any[])
-        .filter((e) => e.type !== "void" && !voided.has(e.id))
+      entries
+        .filter((e) => e.type !== "void" && e.type !== "payout" && !voided.has(e.id))
         .slice(-25)
         .reverse()
-        .map((e) => ({ name: label(e).slice(0, 100), value: e.id }))
+        .map((e) => ({ name: strip(entryLine(g, e)).slice(0, 100), value: e.id }))
     );
   }
   return autocompleteResult([]);
@@ -411,13 +1339,6 @@ const DIALS: Dial[] = [
     fill: (c) => Math.round((Math.min(c.laborRate, 200) / 200) * 8),
     apply: (c, d) => { c.laborRate = Math.max(0, c.laborRate + d); },
     reset: (c) => { c.laborRate = 25; },
-  },
-  {
-    key: "split", label: "Work / Rank", fine: 1, coarse: 5,
-    val: (c) => `${Math.round(c.workSplitPct * 100)} / ${Math.round((1 - c.workSplitPct) * 100)}`,
-    fill: (c) => Math.round(c.workSplitPct * 8),
-    apply: (c, d) => { c.workSplitPct = Math.min(1, Math.max(0, c.workSplitPct + d / 100)); },
-    reset: (c) => { c.workSplitPct = 0.7; },
   },
   {
     key: "commission", label: "Sell commission", fine: 1, coarse: 5,
@@ -535,6 +1456,53 @@ async function handleComponent(i: any) {
   return json({ type: 7, data: renderPanel(config, focused) });
 }
 
+async function handleConfig(i: any) {
+  const gid = guildId(i);
+  const config = await store.getConfig(gid);
+  const sub = subcommand(i);
+
+  if (sub === "set") {
+    if (!isOfficer(i, config)) return reply("⛔ Officers only.");
+    const dial = option<string>(i, "dial")!;
+    const value = option<number>(i, "value")!;
+    if (dial === "labor-rate") config.laborRate = value;
+    else if (dial === "commission") config.commissionPct = value / 100;
+    else if (dial === "farm-margin") config.targetMargin = value / 100;
+    await store.putConfig(gid, config);
+    return reply(embed({ description: `✅ Updated **${dial}** → ${value}.`, color: COLORS.green }));
+  }
+
+  if (sub === "panel") {
+    if (!isOfficer(i, config)) return reply("⛔ Officers only.");
+    return reply(renderPanel(config, DIALS[0].key), true);
+  }
+
+  // view
+  const lines = await store.listLines(gid);
+  const refs = lines.map((l) => `${l.name} $${l.referencePrice}`).join(" · ") || "—";
+  const mults = Object.entries(config.rankMultipliers)
+    .sort((a, b) => Number(a[0]) - Number(b[0]))
+    .map(([, w]) => `${w}×`)
+    .join(" / ");
+  return reply(
+    embed({
+      title: "⚙️ Economy dials",
+      color: COLORS.gold,
+      fields: [
+        { name: "Labor rate", value: `$${config.laborRate} / unit`, inline: true },
+        { name: "Commission", value: `${Math.round(config.commissionPct * 100)}%`, inline: true },
+        { name: "Cycle", value: `${config.cycleNumber ?? "—"}`, inline: true },
+        { name: "Farm margin", value: `${Math.round((config.targetMargin ?? 0) * 100)}% — farmed inputs auto-priced from product`, inline: false },
+        { name: "Rank weights (I→V)", value: mults, inline: false },
+        { name: "Reference prices", value: refs, inline: false },
+        { name: "Officer role", value: config.officerRoleId ? `<@&${config.officerRoleId}>` : "_unset_", inline: false },
+      ],
+    })
+  );
+}
+
+// ---- catalog / rank / recipe (unchanged from v1) ----
+
 async function handleCatalog(i: any) {
   const gid = guildId(i);
   const config = await store.getConfig(gid);
@@ -610,24 +1578,24 @@ async function handleCatalog(i: any) {
   const lines = await store.listLines(gid);
   const margin = config.targetMargin ?? 0;
   const values = itemValues(items, recipes, lines, margin); // farmed back-solved, intermediates built, finals = ref price
-  const money = (n: number) => `$${+n.toFixed(2)}`;
+  const m2 = (n: number) => `$${+n.toFixed(2)}`;
 
   const base = items
     .filter((it) => it.kind === "base")
     .map((it) => {
       const auto = it.source === "farmed" && margin > 0;
-      return `${it.name} ${money(values[it.id] ?? it.value)}${
+      return `${it.name} ${m2(values[it.id] ?? it.value)}${
         auto ? " _(farmed·auto)_" : it.source ? ` _(${it.source})_` : ""
       }`;
     })
     .join(" · ") || "—";
   const inter = items
     .filter((it) => it.kind === "intermediate")
-    .map((it) => `${it.name} ${money(values[it.id] ?? 0)}`)
+    .map((it) => `${it.name} ${m2(values[it.id] ?? 0)}`)
     .join(" · ") || "—";
   const fin = items
     .filter((it) => it.kind === "final")
-    .map((it) => `${it.name} ${money(values[it.id] ?? 0)}`)
+    .map((it) => `${it.name} ${m2(values[it.id] ?? 0)}`)
     .join(" · ") || "—";
 
   return reply(
@@ -894,525 +1862,4 @@ async function handleModal(i: any) {
         .join("\n"),
     })
   );
-}
-
-// ---- jobs & ledger (Phase 2) ----
-
-function isErr(x: any): x is { error: string } {
-  return x && typeof x.error === "string";
-}
-
-async function resolveJob(i: any): Promise<store.JobMeta | { error: string }> {
-  const jobId = await store.getChannelJobId(guildId(i), channelId(i));
-  if (!jobId) {
-    return { error: "❓ Run this in a job's channel — open one with `/job open`." };
-  }
-  const job = await store.getJob(jobId);
-  if (!job || job.status === "closed") return { error: "❓ This channel has no open job." };
-  return job;
-}
-
-async function ensureCategory(
-  gid: string,
-  config: Config,
-  key: "operationsCategoryId" | "archiveCategoryId",
-  name: string
-): Promise<string> {
-  if (config[key]) return config[key]!;
-  const cat = await rest.createChannel(gid, { name, type: 4 });
-  config[key] = cat.id;
-  await store.putConfig(gid, config);
-  return cat.id;
-}
-
-async function handleJob(i: any) {
-  const gid = guildId(i);
-  const sub = subcommand(i);
-  const config = await store.getConfig(gid);
-
-  if (sub === "open") return reply(await jobOpenWork(i), false);
-
-  if (sub === "list") {
-    const jobs = await store.listOpenJobs(gid);
-    if (!jobs.length) return reply("No open jobs. Start one with `/job open`.");
-    return reply(
-      embed({
-        title: "🟢 Open jobs",
-        color: COLORS.green,
-        description: jobs.map((j) => `• **${j.name}** _(${j.lineId})_ — <#${j.channelId}>`).join("\n"),
-      })
-    );
-  }
-
-  if (sub === "reopen") {
-    if (!isOfficer(i, config)) return reply("⛔ Officers only.");
-    const jobId = await store.getChannelJobId(gid, channelId(i));
-    const job = jobId ? await store.getJob(jobId) : undefined;
-    if (!job) return reply("❓ No job is bound to this channel.");
-    if (job.status === "open") return reply("That job is already open.");
-    await store.setJobStatus(gid, job.id, "open");
-    try {
-      const opsCat = await ensureCategory(gid, config, "operationsCategoryId", "Operations");
-      await rest.modifyChannel(job.channelId, {
-        name: `${slug(job.name) || "job"}-${BigInt(job.id).toString(36).slice(-5)}`,
-        parent_id: opsCat,
-        permission_overwrites: [],
-      });
-    } catch (e) {
-      console.error("reopen channel failed", e);
-    }
-    return reply(embed({ description: `🔓 Reopened **${job.name}** — back in Operations & writable. Fix it up, then \`/settle\` again.`, color: COLORS.blue }), false);
-  }
-
-  if (sub === "close") {
-    const job = await resolveJob(i);
-    if (isErr(job)) return reply(job.error);
-    if (job.createdBy !== actorId(i) && !isOfficer(i, config)) {
-      return reply("⛔ Only whoever opened this job (or an officer) can close it.");
-    }
-    try {
-      const archiveCat = await ensureCategory(gid, config, "archiveCategoryId", "Archive");
-      await rest.modifyChannel(job.channelId, {
-        name: `✅-${slug(job.name) || "job"}-${BigInt(job.id).toString(36).slice(-5)}`,
-        parent_id: archiveCat,
-        permission_overwrites: [{ id: gid, type: 0, deny: "2048" }], // @everyone: deny Send Messages
-      });
-    } catch (e) {
-      console.error("archive failed", e);
-    }
-    await store.setJobStatus(gid, job.id, "closed");
-    return reply(embed({ description: `🔴 Closed **${job.name}** — archived to read-only.`, color: COLORS.gray }), false);
-  }
-  return reply("Unknown subcommand.");
-}
-
-async function handleDeposit(i: any) {
-  const job = await resolveJob(i);
-  if (isErr(job)) return reply(job.error);
-  const gid = guildId(i);
-  const actor = actorId(i);
-  const cash = option<number>(i, "cash");
-  const itemId = option<string>(i, "item");
-  const qty = option<number>(i, "qty");
-  if (cash != null) {
-    await store.appendEntry(job.id, { id: i.id, type: "deposit", actor, ts: snowflakeTs(i.id), deposit: { cash } });
-    return reply(embed({ description: `💰 <@${actor}> deposited **$${cash}**`, color: COLORS.green }), false);
-  }
-  if (itemId && qty != null) {
-    const item = await store.getCatalogItem(gid, itemId);
-    if (!item) return reply("⚠️ Pick an item from the list.");
-    await store.appendEntry(job.id, { id: i.id, type: "deposit", actor, ts: snowflakeTs(i.id), deposit: { itemId, qty } });
-    return reply(embed({ description: `📥 <@${actor}> deposited **${qty}× ${item.name}**`, color: COLORS.green }), false);
-  }
-  return reply("Provide `item` + `qty`, or `cash`.");
-}
-
-async function handleWithdraw(i: any) {
-  const job = await resolveJob(i);
-  if (isErr(job)) return reply(job.error);
-  const gid = guildId(i);
-  const actor = actorId(i);
-  const cash = option<number>(i, "cash");
-  const itemId = option<string>(i, "item");
-  const qty = option<number>(i, "qty");
-  if (cash != null) {
-    await store.appendEntry(job.id, { id: i.id, type: "withdraw", actor, ts: snowflakeTs(i.id), withdraw: { cash } });
-    return reply(embed({ description: `💸 <@${actor}> withdrew **$${cash}**`, color: COLORS.blue }), false);
-  }
-  if (itemId && qty != null) {
-    const item = await store.getCatalogItem(gid, itemId);
-    if (!item) return reply("⚠️ Pick an item from the list.");
-    await store.appendEntry(job.id, { id: i.id, type: "withdraw", actor, ts: snowflakeTs(i.id), withdraw: { itemId, qty } });
-    return reply(embed({ description: `📤 <@${actor}> withdrew **${qty}× ${item.name}**`, color: COLORS.blue }), false);
-  }
-  return reply("Provide `item` + `qty`, or `cash`.");
-}
-
-async function handleProcess(i: any) {
-  const job = await resolveJob(i);
-  if (isErr(job)) return reply(job.error);
-  const step = option<string>(i, "step")!;
-  const made = option<number>(i, "made")!;
-  await store.appendEntry(job.id, {
-    id: i.id,
-    type: "process",
-    actor: actorId(i),
-    ts: snowflakeTs(i.id),
-    process: { step, made },
-  });
-  return reply(embed({ description: `⚗️ <@${actorId(i)}> ran **${step}** → **${made}**`, color: COLORS.gold }), false);
-}
-
-async function handleSale(i: any) {
-  const job = await resolveJob(i);
-  if (isErr(job)) return reply(job.error);
-  const qty = option<number>(i, "qty")!;
-  const cash = option<number>(i, "cash")!;
-  const by = option<string>(i, "by") ?? actorId(i);
-  await store.appendEntry(job.id, {
-    id: i.id,
-    type: "sale",
-    actor: actorId(i),
-    ts: snowflakeTs(i.id),
-    sale: { qty, cash, by },
-  });
-  return reply(embed({ description: `💵 <@${by}> sold **${qty}** for **$${cash}**`, color: COLORS.green }), false);
-}
-
-function entryLine(e: any): string {
-  const who = `<@${e.actor}>`;
-  if (e.type === "deposit")
-    return e.deposit.cash != null ? `💰 ${who} +$${e.deposit.cash}` : `📥 ${who} +${e.deposit.qty}× ${e.deposit.itemId}`;
-  if (e.type === "withdraw")
-    return e.withdraw.cash != null ? `💸 ${who} −$${e.withdraw.cash}` : `📤 ${who} −${e.withdraw.qty}× ${e.withdraw.itemId}`;
-  if (e.type === "process") return `⚗️ ${who} ${e.process.step} → ${e.process.made}`;
-  if (e.type === "sale") return `💵 <@${e.sale.by}> sold ${e.sale.qty} for $${e.sale.cash}`;
-  if (e.type === "void") return `🚫 ${who} voided an entry`;
-  return `• ${e.type}`;
-}
-
-function ledgerBody(job: any, entries: any[], full = false): string {
-  if (!entries.length) return `📜 **${job.name}** — no entries yet.`;
-  const voided = new Set(entries.filter((e) => e.type === "void").map((e) => e.voids));
-  const list = full ? entries : entries.slice(-25);
-  const lines = list.map((e) => (voided.has(e.id) ? `~~${entryLine(e)}~~ _(voided)_` : entryLine(e)));
-  const more = !full && entries.length > 25 ? `\n_…${entries.length - 25} earlier (full list in the settled record)_` : "";
-  return `📜 **${job.name}** — ledger (${entries.length} entries)\n${lines.join("\n")}${more}`;
-}
-
-/** Post text to a channel, splitting on newlines to stay under Discord's 2000-char limit. */
-async function postChunks(channelId: string, text: string): Promise<void> {
-  const chunks: string[] = [];
-  let buf = "";
-  for (const ln of text.split("\n")) {
-    if ((buf ? buf.length + 1 : 0) + ln.length > 1900) {
-      if (buf) chunks.push(buf);
-      buf = ln;
-    } else buf = buf ? `${buf}\n${ln}` : ln;
-  }
-  if (buf) chunks.push(buf);
-  for (const c of chunks) await rest.postMessage(channelId, c);
-}
-
-async function handleLedger(i: any) {
-  const job = await resolveJob(i);
-  if (isErr(job)) return reply(job.error);
-  const entries = await store.listEntries(job.id);
-  return reply(embed({ description: ledgerBody(job, entries), color: COLORS.gold }));
-}
-
-async function handleStatus(i: any) {
-  const job = await resolveJob(i);
-  if (isErr(job)) return reply(job.error);
-  const gid = guildId(i);
-  const [entries, catalog, recipes, lines, config] = await Promise.all([
-    store.listEntries(job.id),
-    store.listCatalog(gid),
-    store.listRecipes(gid),
-    store.listLines(gid),
-    store.getConfig(gid),
-  ]);
-  return reply(statusBody(job, entries, catalog, recipes, lines, config));
-}
-
-function statusBody(
-  job: any,
-  entries: any[],
-  catalog: any[],
-  recipes: any[],
-  lines: any[],
-  config: any
-) {
-  entries = liveEntries(entries);
-  const line = lines.find((l) => l.id === job.lineId);
-  const finalId = line?.finalItemId;
-  const finalName = catalog.find((c) => c.id === finalId)?.name ?? finalId ?? "product";
-  const values = itemValues(catalog, recipes, lines, config.targetMargin ?? 0);
-  const stepOut = new Map(
-    recipes.filter((r) => r.lineId === job.lineId).map((r) => [r.step, r.output.itemId])
-  );
-
-  const per = new Map<string, { dep: number; lab: number; wd: number; sold: number }>();
-  const G = (u: string) => {
-    if (!per.has(u)) per.set(u, { dep: 0, lab: 0, wd: 0, sold: 0 });
-    return per.get(u)!;
-  };
-  let revenue = 0,
-    madeFinal = 0,
-    soldQty = 0,
-    wdFinalQty = 0,
-    totalDep = 0;
-
-  for (const e of entries as any[]) {
-    if (e.type === "deposit") {
-      const v = e.deposit.cash ?? (values[e.deposit.itemId] ?? 0) * (e.deposit.qty ?? 0);
-      G(e.actor).dep += v;
-      totalDep += v;
-    } else if (e.type === "process") {
-      G(e.actor).lab += (e.process.made ?? 0) * config.laborRate;
-      if (stepOut.get(e.process.step) === finalId) madeFinal += e.process.made ?? 0;
-    } else if (e.type === "withdraw") {
-      const v = e.withdraw.cash ?? (values[e.withdraw.itemId] ?? 0) * (e.withdraw.qty ?? 0);
-      G(e.actor).wd += v;
-      if (e.withdraw.itemId === finalId) wdFinalQty += e.withdraw.qty ?? 0;
-    } else if (e.type === "sale") {
-      revenue += e.sale.cash;
-      soldQty += e.sale.qty;
-      G(e.sale.by).sold += e.sale.cash;
-    }
-  }
-
-  const m = (n: number) => `$${Math.round(n).toLocaleString()}`;
-  const q = (n: number) => `${+n.toFixed(1)}`.replace(/\.0$/, "");
-  const members = [...per.entries()]
-    .sort((a, b) => b[1].dep + b[1].lab + b[1].sold - (a[1].dep + a[1].lab + a[1].sold))
-    .map(
-      ([u, c]) =>
-        `• <@${u}> — in ${m(c.dep)} · labor ${m(c.lab)}${c.sold ? ` · sold ${m(c.sold)}` : ""}${
-          c.wd ? ` · out ${m(c.wd)}` : ""
-        }`
-    );
-
-  // current on-hand inventory (leftover inputs, intermediates mid-chain, unsold final)
-  const inv = inventory(
-    entries,
-    recipes.filter((r) => r.lineId === job.lineId),
-    finalId
-  );
-  const nameOf = (id: string) => catalog.find((c) => c.id === id)?.name ?? id;
-  const onHand = Object.entries(inv)
-    .filter(([, n]) => Math.abs(n) > 0.0001)
-    .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
-    .map(([id, n]) => `${nameOf(id)} ×${q(n)}`);
-  const finalOnHand = inv[finalId ?? ""] ?? 0;
-
-  const recon =
-    finalOnHand > 0.0001
-      ? `⚠️ **${q(finalOnHand)} ${finalName}** not yet sold or withdrawn — clear before settling.`
-      : madeFinal > 0
-        ? `✅ All ${finalName} sold or withdrawn.`
-        : `_No ${finalName} produced yet._`;
-
-  return embed({
-    title: `📊 ${job.name} — ${line?.name ?? job.lineId} · ${job.status}`,
-    color: finalOnHand > 0.0001 ? COLORS.gold : madeFinal > 0 ? COLORS.green : COLORS.gray,
-    description: [recon, "", members.length ? "**Contributors**\n" + members.join("\n") : "_No contributions yet._"].join("\n"),
-    fields: [
-      { name: "Pool", value: `deposited ${m(totalDep)} · made ${madeFinal} ${finalName} · sold ${soldQty} for ${m(revenue)}` },
-      { name: "On hand", value: onHand.length ? onHand.join(" · ") : "nothing" },
-    ],
-  });
-}
-
-function bestLevel(roles: string[] | undefined, rankMap: Record<string, number>): number {
-  let best = 5;
-  for (const r of roles ?? []) {
-    const lvl = rankMap[r];
-    if (lvl != null && lvl < best) best = lvl;
-  }
-  return best;
-}
-
-async function jobOpenWork(i: any) {
-  const gid = guildId(i);
-  const config = await store.getConfig(gid);
-  const name = option<string>(i, "name")!.trim();
-  const lineId = option<string>(i, "product")!;
-  const line = (await store.listLines(gid)).find((l) => l.id === lineId);
-  if (!line) return "⚠️ Pick a product line from the list.";
-
-  let channel: { id: string };
-  try {
-    const opsCat = await ensureCategory(gid, config, "operationsCategoryId", "Operations");
-    channel = await rest.createChannel(gid, {
-      name: `${slug(name) || "job"}-${BigInt(i.id).toString(36).slice(-5)}`,
-      type: 0,
-      parent_id: opsCat,
-      topic: `Cutter job — ${name} (${line.name})`,
-    });
-  } catch (e) {
-    console.error("channel create failed", e);
-    return "⚠️ I couldn't create the job channel — make sure I have **Manage Channels**, then try again.";
-  }
-
-  await store.createJob(gid, {
-    id: i.id,
-    name,
-    lineId,
-    status: "open",
-    channelId: channel.id,
-    guildId: gid,
-    createdBy: actorId(i),
-    createdAt: snowflakeTs(i.id),
-  });
-  try {
-    await rest.postMessage(
-      channel.id,
-      `🔪 **${name}** — ${line.name}\nLog the op right here: \`/deposit\` · \`/process\` · \`/sale\`. \`/ledger\` shows history, \`/status\` tracks the pool.`
-    );
-  } catch {
-    /* welcome message is best-effort */
-  }
-  return embed({
-    description: `🟢 Opened **${name}** _(${line.name})_ → <#${channel.id}>`,
-    color: COLORS.green,
-  });
-}
-
-async function settleWork(i: any): Promise<string> {
-  const job = await resolveJob(i);
-  if (isErr(job)) return job.error;
-  const gid = guildId(i);
-  const config = await store.getConfig(gid);
-  if (job.createdBy !== actorId(i) && !isOfficer(i, config)) {
-    return "⛔ Only whoever opened this job (or an officer) can settle it.";
-  }
-
-  const [entries, catalog, recipes, lines, ranks] = await Promise.all([
-    store.listEntries(job.id),
-    store.listCatalog(gid),
-    store.listRecipes(gid),
-    store.listLines(gid),
-    store.listRanks(gid),
-  ]);
-  const line = lines.find((l) => l.id === job.lineId);
-  if (!line) return "⚠️ This job's product line is missing.";
-  if (!entries.some((e) => e.type === "sale")) {
-    return "⚠️ No sales logged — nothing to settle. Log a `/sale` first.";
-  }
-
-  // resolve each participant's rank level from their Discord roles
-  const rankMap = Object.fromEntries(ranks.map((r) => [r.roleId, r.level]));
-  const participants = new Set<string>();
-  for (const e of entries as any[]) participants.add(e.type === "sale" ? e.sale.by : e.actor);
-  const levels = await Promise.all(
-    [...participants].map(async (uid) => {
-      try {
-        const mem = await rest.getMember(gid, uid);
-        return [uid, bestLevel(mem.roles, rankMap)] as const;
-      } catch {
-        return [uid, 5] as const;
-      }
-    })
-  );
-  const memberLevels = Object.fromEntries(levels);
-
-  const result = settle({ config, catalog, recipes, line, lines, entries, memberLevels });
-
-  // persist payouts, close, archive
-  await Promise.all(
-    result.perMember.map((p) =>
-      store.putPayout(job.id, {
-        userId: p.userId,
-        level: p.level,
-        reimbursed: p.reimbursed,
-        commission: p.commission,
-        work: p.work,
-        rank: p.rank,
-        net: p.net,
-      })
-    )
-  );
-  await store.setJobStatus(gid, job.id, "closed");
-  job.status = "closed";
-
-  const m = (n: number) => `$${Math.round(n).toLocaleString()}`;
-  const finalName = catalog.find((c) => c.id === line.finalItemId)?.name ?? "product";
-  const unsold = inventory(entries, recipes.filter((r) => r.lineId === job.lineId), line.finalItemId)[line.finalItemId] ?? 0;
-  const rows = [...result.perMember]
-    .sort((a, b) => b.net - a.net)
-    .map((p) => {
-      const earned = p.net - p.reimbursed;
-      return `**<@${p.userId}>** — take-home **${m(p.net)}**  _(capital back ${m(p.reimbursed)} · earned ${m(earned)})_`;
-    });
-  const foot = result.loss
-    ? `⚠️ **Loss** — revenue didn't cover capital; reimbursements paid pro-rata, no profit split.`
-    : `Pool: ${m(result.revenue)} − reimbursed ${m(result.reimbursed)} − commission ${m(result.commission)} → **${m(result.distributable)}** split ${Math.round(config.workSplitPct * 100)}/${Math.round((1 - config.workSplitPct) * 100)}.` +
-      (result.tiesOut ? "" : " ⚠️ rounding mismatch.") +
-      (unsold > 0.0001 ? `\n⚠️ ${+unsold.toFixed(1)} ${finalName} unsold — not in this payout.` : "");
-  const payoutEmbed = embed({
-    title: `💰 Settlement — ${job.name} · ${m(result.revenue)}`,
-    color: result.loss ? COLORS.red : COLORS.green,
-    description: [...rows, "", foot].join("\n"),
-  });
-
-  // Post the self-contained dispute record (ledger → status → payout) as the channel's
-  // last messages, then archive read-only. Done before archiving so the channel is still writable.
-  // record posting is best-effort (must run while the channel is still writable)
-  try {
-    await postChunks(job.channelId, ledgerBody(job, entries, true));
-    await rest.postMessage(job.channelId, statusBody(job, entries, catalog, recipes, lines, config));
-    await rest.postMessage(job.channelId, payoutEmbed);
-  } catch (e) {
-    console.error("settle record post failed", e);
-  }
-  // archive is its own step so a record-post failure never skips it
-  try {
-    const archiveCat = await ensureCategory(gid, config, "archiveCategoryId", "Archive");
-    await rest.modifyChannel(job.channelId, {
-      name: `💰-${slug(job.name) || "job"}-${BigInt(job.id).toString(36).slice(-5)}`,
-      parent_id: archiveCat,
-      permission_overwrites: [{ id: gid, type: 0, deny: "2048" }],
-    });
-  } catch (e) {
-    console.error("settle archive failed", e);
-  }
-
-  return `✅ Settled **${job.name}** — ${m(result.revenue)} paid out. Full record posted to the channel; archived read-only.`;
-}
-
-async function handleMe(i: any) {
-  const job = await resolveJob(i);
-  if (isErr(job)) return reply(job.error);
-  const gid = guildId(i);
-  const me = actorId(i);
-  const [entries, catalog, recipes, lines, config, ranks] = await Promise.all([
-    store.listEntries(job.id),
-    store.listCatalog(gid),
-    store.listRecipes(gid),
-    store.listLines(gid),
-    store.getConfig(gid),
-    store.listRanks(gid),
-  ]);
-  const line = lines.find((l) => l.id === job.lineId);
-  const values = itemValues(catalog, recipes, lines, config.targetMargin ?? 0);
-  let dep = 0, lab = 0, wd = 0, soldCash = 0;
-  for (const e of liveEntries(entries) as any[]) {
-    if (e.type === "deposit" && e.actor === me) dep += e.deposit.cash ?? (values[e.deposit.itemId] ?? 0) * (e.deposit.qty ?? 0);
-    else if (e.type === "process" && e.actor === me) lab += (e.process.made ?? 0) * config.laborRate;
-    else if (e.type === "withdraw" && e.actor === me) wd += e.withdraw.cash ?? (values[e.withdraw.itemId] ?? 0) * (e.withdraw.qty ?? 0);
-    else if (e.type === "sale" && e.sale.by === me) soldCash += e.sale.cash;
-  }
-  const rankMap = Object.fromEntries(ranks.map((r) => [r.roleId, r.level]));
-  const myLevel = bestLevel(i.member?.roles, rankMap);
-  const m = (n: number) => `$${Math.round(n).toLocaleString()}`;
-  const fields = [
-    { name: "Rank", value: `Level ${myLevel} (${config.rankMultipliers[myLevel] ?? 1}×)`, inline: true },
-    { name: "Capital fronted", value: m(dep), inline: true },
-    { name: "Labor", value: m(lab), inline: true },
-  ];
-  if (soldCash) fields.push({ name: "Sold", value: `${m(soldCash)} → commission ${m(soldCash * config.commissionPct)}`, inline: true });
-  if (wd) fields.push({ name: "Withdrawn", value: `−${m(wd)}`, inline: true });
-  return reply(
-    embed({
-      title: `🧍 You on ${job.name}`,
-      color: COLORS.blue,
-      description: `_(${line?.name ?? job.lineId})_ — capital is reimbursed first; exact take-home is set at \`/settle\`.`,
-      fields,
-    })
-  );
-}
-
-async function handleVoid(i: any) {
-  const job = await resolveJob(i);
-  if (isErr(job)) return reply(job.error);
-  const config = await store.getConfig(guildId(i));
-  if (!isOfficer(i, config)) return reply("⛔ Officers only.");
-  const entryId = option<string>(i, "entry")!;
-  const entries = await store.listEntries(job.id);
-  const target = entries.find((e) => e.id === entryId) as any;
-  if (!target) return reply("⚠️ Pick an entry from the list.");
-  if (target.type === "void") return reply("⚠️ That's already a void marker.");
-  await store.appendEntry(job.id, { id: i.id, type: "void", actor: actorId(i), ts: snowflakeTs(i.id), voids: entryId });
-  return reply(embed({ description: `🚫 <@${actorId(i)}> voided: ${entryLine(target)}`, color: COLORS.red }), false);
 }

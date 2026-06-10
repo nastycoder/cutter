@@ -21,6 +21,7 @@ export class CutterStack extends Stack {
     super(scope, id, props);
 
     // ---- single-table store ----
+    // v2 (Contribution Treasury) needs no GSI — the jobs-by-status index retired
     const table = new dynamodb.Table(this, "Table", {
       tableName: "Cutter",
       partitionKey: { name: "PK", type: dynamodb.AttributeType.STRING },
@@ -28,11 +29,6 @@ export class CutterStack extends Stack {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
       removalPolicy: RemovalPolicy.RETAIN,
-    });
-    table.addGlobalSecondaryIndex({
-      indexName: "GSI1",
-      partitionKey: { name: "GSI1PK", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "GSI1SK", type: dynamodb.AttributeType.STRING },
     });
 
     // ---- Discord credentials (publicKey / appId / botToken) ----
@@ -63,20 +59,6 @@ export class CutterStack extends Stack {
         minify: true,
         target: "node20",
         sourceMap: true,
-        // ship the tutorial deck (PDF + slide PNGs) alongside the handler so
-        // /setup can upload it to the guide channel
-        commandHooks: {
-          beforeBundling: () => [],
-          beforeInstall: () => [],
-          afterBundling: (_inputDir: string, outputDir: string) => {
-            const deck = path.join(__dirname, "../../../tutorial"); // repo's tutorial/ dir
-            // copied flat into the bundle root so the handler reads them from __dirname
-            return [
-              `cp ${path.join(deck, "Cutter-Tutorial.pdf")} ${outputDir}/`,
-              `cp ${path.join(deck, "tutorial-")}*.png ${outputDir}/`,
-            ];
-          },
-        },
       },
     });
     table.grantReadWriteData(fn);

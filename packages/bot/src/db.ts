@@ -38,15 +38,3 @@ export async function queryPrefix<T>(pk: string, skPrefix: string): Promise<T[]>
 export async function deleteItem(pk: string, sk: string): Promise<void> {
   await doc.send(new DeleteCommand({ TableName: TABLE, Key: { PK: pk, SK: sk } }));
 }
-
-export async function queryGSI1<T>(gsi1pk: string): Promise<T[]> {
-  const r = await doc.send(
-    new QueryCommand({
-      TableName: TABLE,
-      IndexName: "GSI1",
-      KeyConditionExpression: "GSI1PK = :pk",
-      ExpressionAttributeValues: { ":pk": gsi1pk },
-    })
-  );
-  return (r.Items ?? []) as T[];
-}
