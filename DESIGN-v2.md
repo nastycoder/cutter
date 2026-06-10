@@ -32,7 +32,7 @@ v2 replaces the job with a **standing treasury** mirrored as the crew's real **s
 ### 3.1 What each member earns (their *tab*, accrued live within a cycle)
 
 ```
-capital_m      = cash fronted + bought-supply cost (at cost)     → reimbursed
+capital_m      = cash fronted + bought-supply cost (at catalog price)  → reimbursed
 farm_m         = farmed materials credited to m × item value     → paid (auto-priced)
 labor_m        = units m processed × labor rate                  → paid
 commission_m   = commission% × m's sales                         → paid
@@ -134,11 +134,11 @@ Cross-house actions name their destination. Reports/payout live in **#money-hous
 | Channel | Command | Does |
 |---|---|---|
 | #raw / #product | `/deposit item: qty: [credit:@who]` | add farmed/owned material; **farm pay** to credit (default: you) |
-| #raw | `/buy item: qty: cost:` | bought supplies in; **capital** = cost, owed to buyer |
+| #raw | `/buy item: qty:` | bought supplies in; **capital** = catalog price × qty, owed to buyer |
 | #money | `/fund-cash amount:` *(deposit cash)* | fund the treasury with cash; **capital** owed back |
-| #raw→#product | `/process step: made: [credit:@who]` | consume raw → product; **labor pay** to credit |
+| #raw→#product | `/process line: step: made: [credit:@who]` | consume raw → product; **labor pay** to credit |
 | any | `/transfer item: qty: to:#house` | move stock between houses (logistics; no pay effect) |
-| #money | `/sale qty: cash: [by:@who]` | product → cash; **commission** to seller |
+| #money | `/sale product: qty: cash: [by:@who]` | product → cash; **commission** to seller |
 | any house | `/reconcile item: count:` | officer logs real in-game count; bot records shrinkage vs expected |
 | any | `/withdraw item:\|cash: qty:` | take out for personal use; valued, **deducted from your tab** |
 | #treasury | `/owed [@member]` | live tab: earned this cycle, advances taken, advanceable now |
@@ -150,6 +150,15 @@ Cross-house actions name their destination. Reports/payout live in **#money-hous
 | #treasury | `/me` · `/ledger` · `/status` | personal standing · history · treasury overview |
 | officer | `/setup officer:@role` | build houses, channels, guide+deck; init cycle 1 |
 | officer | `/config` · `/rank` · `/catalog` · `/recipe` | unchanged from v1 (minus `workSplitPct`) |
+
+Because the treasury holds **multiple product lines at once** (no per-job isolation), the line
+can't be inferred from context the way v1's job did:
+- **`/process` takes `line:`** — a step name like `refine` may exist in several recipes, so the
+  line disambiguates which recipe to run. `step:` autocompletes to that line's steps.
+- **`/sale` takes `product:`** — a house stores finished goods from every line, so the sale
+  names which product moved. `product:` autocompletes to the lines' final items.
+- **`/buy` takes no `cost:`** — bought (market) items carry their price in the catalog, so
+  capital = catalog price × qty automatically.
 
 ## 7. Engine changes
 

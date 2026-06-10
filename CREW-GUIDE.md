@@ -39,17 +39,19 @@ Farmed it yourself? That's your farm pay. **Holding it for someone who farmed it
 
 **Bought supplies with your own cash** — in 🌿 **#raw-house**:
 ```
-/buy item:Vial qty:200 cost:10000
+/buy item:Vial qty:200
 ```
+No need to type a price — Cutter knows the market price from the catalog ($50/vial → $10,000).
 You get that **$10,000 back** off the top when we settle — buying supplies is fronting capital,
 not a donation.
 
 **Cook a step** — in 🧪 **#product-house**:
 ```
-/process step:refine made:480
+/process line:Honey step:refine made:480
 ```
-Report what you **made**. Cutter pulls the right raw materials out, adds the product, and pays
-you for the labor. Cooking for someone else? `credit:@who`.
+Report what you **made**. Tell it the **line** too — a step like `refine` can show up in more
+than one recipe, so Cutter needs to know which product you're cooking. It pulls the right raw
+materials out, adds the product, and pays you for the labor. Cooking for someone else? `credit:@who`.
 
 **Move stuff between houses** — anywhere:
 ```
@@ -59,10 +61,11 @@ Just logistics — moving product around doesn't change anyone's pay.
 
 **Sell the product** — in 💰 **#money-house**:
 ```
-/sale qty:1700 cash:220000
+/sale product:Honey qty:1700 cash:220000
 ```
-The cash lands in the money house. Whoever sold it earns **commission** — hazard pay for
-holding the heat. Someone else moved it? `by:@who`.
+Name the **product** — the money house handles sales from every line, so Cutter needs to know
+what moved. The cash lands in the money house. Whoever sold it earns **commission** — hazard
+pay for holding the heat. Someone else moved it? `by:@who`.
 
 ---
 
@@ -150,10 +153,10 @@ happened and who did it.
 | You're… | Run | Where |
 |---|---|---|
 | banking raw materials | `/deposit item: qty: [credit:@who]` | 🌿 raw |
-| buying supplies | `/buy item: qty: cost:` | 🌿 raw |
-| cooking | `/process step: made: [credit:@who]` | 🧪 product |
+| buying supplies | `/buy item: qty:` | 🌿 raw |
+| cooking | `/process line: step: made: [credit:@who]` | 🧪 product |
 | moving stock | `/transfer item: qty: to:#house` | anywhere |
-| selling | `/sale qty: cash: [by:@who]` | 💰 money |
+| selling | `/sale product: qty: cash: [by:@who]` | 💰 money |
 | checking your cut | `/owed` · `/me` | 💰 money |
 | needing cash now | ask an officer for `/advance` | 💰 money |
 | cashing the crew out | `/payout` *(officer)* | 💰 money |
