@@ -27,8 +27,30 @@ import type {
   LossCause,
 } from "@cutter/shared";
 import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 const lambdaClient = new LambdaClient({});
+
+// Tutorial deck assets are bundled next to the handler (see infra commandHooks).
+const DECK_DIR = __dirname;
+function slideFiles(): string[] {
+  try {
+    return fs
+      .readdirSync(DECK_DIR)
+      .filter((n) => /^tutorial-\d+\.png$/.test(n))
+      .sort();
+  } catch {
+    return [];
+  }
+}
+function readDeck(name: string): Uint8Array | null {
+  try {
+    return fs.readFileSync(path.join(DECK_DIR, name));
+  } catch {
+    return null;
+  }
+}
 
 // Commands whose work exceeds Discord's 3s window are deferred: we ACK immediately,
 // then this Lambda invokes itself asynchronously to do the work and edit the reply.
@@ -350,6 +372,8 @@ async function setupWork(i: any): Promise<MsgData | string> {
       config.guideChannelId = ch.id;
       await store.putConfig(gid, config);
     }
+    // upload the tutorial deck once: slides inline as a gallery + the PDF to
+    // download. The deck is the guide.
     if (config.guideChannelId && !config.guidePosted) {
       const { appId } = await getSecret();
       await rest.modifyChannel(config.guideChannelId, {
@@ -358,13 +382,27 @@ async function setupWork(i: any): Promise<MsgData | string> {
           { id: appId, type: 1, allow: "52224" }, // bot: View+Send+EmbedLinks+AttachFiles
         ],
       });
-      for (const msg of guideMessages(config)) {
-        await rest.postMessage(config.guideChannelId, msg);
+      const slides = slideFiles()
+        .map((n) => ({ name: n, data: readDeck(n), contentType: "image/png" }))
+        .filter((s): s is { name: string; data: Uint8Array; contentType: string } => s.data != null);
+      // Discord caps attachments at 10 per message — post the slides in batches.
+      for (let k = 0; k < slides.length; k += 10) {
+        await rest.postFiles(
+          config.guideChannelId,
+          slides.slice(k, k + 10),
+          k === 0 ? "📑 **Cutter crew guide** — swipe through the slides:" : undefined
+        );
       }
-      config.guidePosted = true;
-      await store.putConfig(gid, config);
+      const pdf = readDeck("Cutter-Tutorial.pdf");
+      if (pdf) {
+        await rest.postFiles(config.guideChannelId, [{ name: "Cutter-Tutorial.pdf", data: pdf, contentType: "application/pdf" }], "📄 Full deck (PDF) — download or print:");
+      }
+      if (slides.length || pdf) {
+        config.guidePosted = true;
+        await store.putConfig(gid, config);
+      }
     }
-    guideLine = `Crew guide → <#${config.guideChannelId}> (read-only)`;
+    guideLine = `Crew guide deck → <#${config.guideChannelId}> (read-only)`;
   } catch (e) {
     console.error("guide channel failed", e);
   }
@@ -386,93 +424,6 @@ async function setupWork(i: any): Promise<MsgData | string> {
       .filter(Boolean)
       .join("\n"),
   });
-}
-
-/** The crew guide, condensed from CREW-GUIDE.md into postable embeds. */
-function guideMessages(config: Config): MsgData[] {
-  const raw = houseLink(config, "raw");
-  const product = houseLink(config, "product");
-  const moneyCh = houseLink(config, "money");
-  const treasury = houseLink(config, "treasury");
-  return [
-    embed({
-      title: "⚜ Cutter — How We Run & Get Paid",
-      color: COLORS.gold,
-      description: [
-        "Cutter is our bookkeeper. It tracks every bit of work the crew puts in — farming, funding, cooking, selling — and pays everyone right at payout. Run a few simple commands as you work; Cutter keeps the tally.",
-        "",
-        "**The stash houses** — the books mirror the real shelves:",
-        `${raw} — raw materials (farmed + bought supplies)`,
-        `${product} — everything cooked, half-steps to finished product`,
-        `${moneyCh} — the cash`,
-        `${treasury} — the books: \`/status\` · \`/owed\` · \`/payout\``,
-        "",
-        "Run commands **in the house you're working in** — Cutter knows which house you mean from the channel.",
-      ].join("\n"),
-    }),
-    embed({
-      title: "📥 Logging your work",
-      color: COLORS.green,
-      description: [
-        `**Bring in materials** — in ${raw}: \`/deposit item: qty:\` — farmed it yourself? That's your **farm pay**. Carrying someone else's? \`credit:@who\` — **credit follows the doer, not the carrier.**`,
-        "",
-        "**Buy with your own cash** — `/buy item: qty:` — no price to type; everything's valued at **catalog**, reimbursed off the top at payout. Score a deal or overpay on your own — that's yours.",
-        "",
-        `**Cook** — in ${product}: \`/process line: step: made:\` — report what you **made**; Cutter pulls the inputs, adds the product, pays the **labor**. Cooking for someone? \`credit:@who\`.`,
-        "",
-        `**Sell** — in ${moneyCh}: \`/sale product: qty: cash:\` — the cash lands in the money house, the seller earns **commission**. Someone else moved it? \`by:@who\`.`,
-        "",
-        "**Cash the crew's way** — `/fund-cash amount:` — fronted cash is capital, reimbursed at payout.",
-        "",
-        "**Move stock** — `/transfer item: qty: to:#house` — logistics only, no pay effect.",
-      ].join("\n"),
-    }),
-    embed({
-      title: "🎒 Taking product out to sell",
-      color: COLORS.blue,
-      description: [
-        "`/checkout product: qty:` — you're now **holding** crew product (not a withdrawal, doesn't touch your pay).",
-        "`/sale product: qty: cash:` — sells from what you're holding first.",
-        "`/return product: qty:` — the rest goes back on the shelf.",
-        "",
-        "It has to square: **out = sold + returned**. `/holding` shows what anyone still has out. Got jacked? Log a `/loss`.",
-      ].join("\n"),
-    }),
-    embed({
-      title: "💰 How you get paid",
-      color: COLORS.gold,
-      description: [
-        "**① Paid for your work, at its value** — whatever your rank: capital back, farm pay, cook pay per unit, commission on your sales.",
-        "",
-        "**② Rank cut of the fund** — the profit left after all work is paid splits **by rank** among everyone who contributed this cycle: I 5× · II 4× · III 3× · IV 2× · V 1×.",
-        "",
-        `The books run in **cycles**. An officer's \`/payout\` (in ${treasury}) pays every tab + rank shares, then starts a fresh cycle — inventory stays, the tally resets. **It's payday.**`,
-        "",
-        "**Need cash early?** An officer can `/advance @you amount:` against what you've already earned — it squares up automatically at payout. Check your tab anytime: `/owed`.",
-      ].join("\n"),
-    }),
-    embed({
-      title: "🚨 Busted or robbed",
-      color: COLORS.red,
-      description: [
-        "`/loss item: qty: cause:` or `/loss cash: cause:` — anyone logs it the moment it happens.",
-        "",
-        "• **Crew-shared by default** — the hit comes out of the profit, everyone's cut takes a little. Cost of running together.",
-        "• Clearly on one person? An officer can `charge:@member` so it comes off their cut, not the crew's.",
-        "• **Nobody ever ends up owing** — catastrophic losses spread what's left so no one goes negative.",
-        "• Got it back? An officer `/void`s the loss and the stock's restored.",
-      ].join("\n"),
-    }),
-    embed({
-      title: "📋 Keeping it straight",
-      color: COLORS.gray,
-      description: [
-        "`/me` your standing · `/owed` your tab · `/status` the whole treasury · `/ledger` the blow-by-blow · `/stash` a house's shelf · `/holding` product out · `/reconcile` officer count vs books · `/withdraw` personal use (valued, off your tab)",
-        "",
-        "**Put in the work. Cutter pays you right.**",
-      ].join("\n"),
-    }),
-  ];
 }
 
 // ---- logging commands ----

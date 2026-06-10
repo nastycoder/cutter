@@ -57,6 +57,28 @@ export function postMessage(channelId: string, message: MsgBody): Promise<any> {
   });
 }
 
+/** Upload files (multipart) to a channel — e.g. the tutorial deck. */
+export async function postFiles(
+  channelId: string,
+  files: { name: string; data: Uint8Array; contentType: string }[],
+  content?: string
+): Promise<any> {
+  const { botToken } = await getSecret();
+  const form = new FormData();
+  if (content) form.append("payload_json", JSON.stringify({ content }));
+  files.forEach((f, idx) => {
+    form.append(`files[${idx}]`, new Blob([f.data], { type: f.contentType }), f.name);
+  });
+  // Don't set content-type: fetch derives the multipart boundary from the FormData.
+  const res = await fetch(`${API}/channels/${channelId}/messages`, {
+    method: "POST",
+    headers: { Authorization: `Bot ${botToken}` },
+    body: form,
+  });
+  if (!res.ok) throw new Error(`Discord upload ${channelId}: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
 export function getMember(guildId: string, userId: string): Promise<{ roles: string[] }> {
   return dapi(`/guilds/${guildId}/members/${userId}`);
 }

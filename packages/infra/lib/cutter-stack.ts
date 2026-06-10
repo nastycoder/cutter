@@ -59,6 +59,20 @@ export class CutterStack extends Stack {
         minify: true,
         target: "node20",
         sourceMap: true,
+        // ship the tutorial deck (PDF + slide PNGs) alongside the handler so
+        // /setup can upload it to the guide channel
+        commandHooks: {
+          beforeBundling: () => [],
+          beforeInstall: () => [],
+          afterBundling: (_inputDir: string, outputDir: string) => {
+            const deck = path.join(__dirname, "../../../tutorial"); // repo's tutorial/ dir
+            // copied flat into the bundle root so the handler reads them from __dirname
+            return [
+              `cp ${path.join(deck, "Cutter-Tutorial.pdf")} ${outputDir}/`,
+              `cp ${path.join(deck, "tutorial-")}*.png ${outputDir}/`,
+            ];
+          },
+        },
       },
     });
     table.grantReadWriteData(fn);
