@@ -139,7 +139,7 @@ export async function getPayoutRecord(gid: string, cycle: number): Promise<Payou
 export async function seedDefaults(gid: string): Promise<void> {
   const lines: ProductLine[] = [
     { id: "honey", name: "Honey", finalItemId: "honey", referencePrice: 125 },
-    { id: "coke", name: "Coke", finalItemId: "bag_of_coke", referencePrice: 150 },
+    { id: "coke", name: "Coke", finalItemId: "bag_of_coke", referencePrice: 135 },
   ];
   for (const l of lines) await putLine(gid, l);
 
