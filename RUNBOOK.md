@@ -48,7 +48,7 @@ npm run deploy         # cdk deploy
    GUILD_ID=<server id> npm run register
    ```
 6. In the server, run **`/setup officer:@<role>`** — it builds the house channels + the read-only
-   guide, seeds the Honey line, and opens cycle 1. Then map ranks (`scripts/setup-roles.ts` or `/rank map`).
+   guide, seeds the Honey + Coke lines, and opens cycle 1. Then map ranks (`scripts/setup-roles.ts` or `/rank map`).
 
 **Redeploy** after code changes: `npm run deploy`. **Re-register** only when command shapes change: `npm run register`.
 
@@ -129,7 +129,7 @@ floored at 0 (and reported as forgiven); **voided** entries vanish from the math
 All economy values are data — nothing hardcoded, all editable in Discord (officers):
 - **Dials** — `laborRate`, commission %, farm margin, rank weights. Tune with **`/config panel`** or `/config set`.
 - **Prices** — `/catalog add|set` (only base items are priced; intermediates derive their build cost live).
-- **Product lines & recipes** — `/recipe`. Honey is seeded; add more lines as you get the formulas.
+- **Product lines & recipes** — `/recipe`. Honey and Coke are seeded; add more lines as you get the formulas.
 - **Ranks** — `/rank map` (role→level) and `/rank weights` (level→multiplier).
 
 ---

@@ -415,7 +415,7 @@ async function setupWork(i: any): Promise<MsgData | string> {
       `Houses: ${houseLink(config, "raw")} · ${houseLink(config, "product")} · ${houseLink(config, "money")} · ${houseLink(config, "treasury")}`,
       created.length ? `Created: ${created.join(" ")}` : "",
       `Cycle **${config.cycleNumber}** is live — log work as it happens, \`/payout\` settles it.`,
-      "Seeded product line **Honey** (catalog · recipes)",
+      "Seeded product lines **Honey** + **Coke** (catalog · recipes)",
       "Default dials: labor $25/unit · 8% commission · 40% farm margin · ranks 5/4/3/2/1",
       guideLine,
       "",

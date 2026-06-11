@@ -135,23 +135,24 @@ export async function getPayoutRecord(gid: string, cycle: number): Promise<Payou
   return db.getItem<PayoutRecord>(`PAYOUT#${gid}`, cyc(cycle));
 }
 
-/** Seed the honey product line (the chain we've fully specced) + default dials. */
+/** Seed the honey + coke product lines (the chains we've fully specced) + default dials. */
 export async function seedDefaults(gid: string): Promise<void> {
-  await putLine(gid, {
-    id: "honey",
-    name: "Honey",
-    finalItemId: "honey",
-    referencePrice: 125,
-  });
+  const lines: ProductLine[] = [
+    { id: "honey", name: "Honey", finalItemId: "honey", referencePrice: 125 },
+    { id: "coke", name: "Coke", finalItemId: "bag_of_coke", referencePrice: 150 },
+  ];
+  for (const l of lines) await putLine(gid, l);
 
-  // Replace the honey chain cleanly: drop any previously-seeded steps and the
+  // Replace the seeded chains cleanly: drop any previously-seeded steps and the
   // catalog ids this seed has retired, so a re-run of /setup never leaves a
   // stale "refine" step or "Heroin powder" item behind.
-  const oldSteps = (await listRecipes(gid)).filter((r) => r.lineId === "honey");
-  for (const r of oldSteps) await deleteRecipe(gid, "honey", r.step);
+  const seededLineIds = new Set(lines.map((l) => l.id));
+  const oldSteps = (await listRecipes(gid)).filter((r) => seededLineIds.has(r.lineId));
+  for (const r of oldSteps) await deleteRecipe(gid, r.lineId, r.step);
   for (const legacy of ["poppy", "heroin_powder"]) await deleteCatalogItem(gid, legacy);
 
   const items: CatalogItem[] = [
+    // honey
     { id: "poppy_seed", name: "Poppy seed", kind: "base", value: 20, source: "farmed", lineId: "honey" },
     { id: "acetone", name: "Acetone", kind: "base", value: 30, source: "farmed", lineId: "honey" },
     { id: "baking_soda", name: "Baking soda", kind: "base", value: 50, source: "bought", lineId: "honey" },
@@ -162,6 +163,13 @@ export async function seedDefaults(gid: string): Promise<void> {
     { id: "cut_heroin", name: "Cut heroin", kind: "intermediate", value: 0, lineId: "honey" },
     { id: "vial_heroin", name: "Vial heroin", kind: "intermediate", value: 0, lineId: "honey" },
     { id: "honey", name: "Honey", kind: "final", value: 0, lineId: "honey" },
+    // coke (cut also consumes honey's baking soda + acetone cross-line)
+    { id: "coca_leaves", name: "Coca leaves", kind: "base", value: 20, source: "farmed", lineId: "coke" },
+    { id: "illegal_gas", name: "Illegal Gas", kind: "base", value: 50, source: "farmed", lineId: "coke" },
+    { id: "weed_baggie", name: "Weed baggie", kind: "base", value: 20, source: "bought", lineId: "coke" },
+    { id: "raw_cocaine", name: "Raw cocaine", kind: "intermediate", value: 0, lineId: "coke" },
+    { id: "loose_cocaine", name: "Loose cocaine", kind: "intermediate", value: 0, lineId: "coke" },
+    { id: "bag_of_coke", name: "Bag of coke", kind: "final", value: 0, lineId: "coke" },
   ];
   for (const it of items) await putCatalogItem(gid, it);
 
@@ -170,6 +178,9 @@ export async function seedDefaults(gid: string): Promise<void> {
     { lineId: "honey", step: "cut", inputs: [{ itemId: "weak_heroin_powder", qty: 2 }, { itemId: "baking_soda", qty: 2 }], output: { itemId: "cut_heroin", yield: 4 } },
     { lineId: "honey", step: "bottle", inputs: [{ itemId: "cut_heroin", qty: 4 }, { itemId: "vial", qty: 1 }], output: { itemId: "vial_heroin", yield: 4 }, canFail: true },
     { lineId: "honey", step: "dose", inputs: [{ itemId: "vial_heroin", qty: 1 }, { itemId: "syringe", qty: 1 }], output: { itemId: "honey", yield: 2 }, canFail: true },
+    { lineId: "coke", step: "powder", inputs: [{ itemId: "coca_leaves", qty: 3 }, { itemId: "illegal_gas", qty: 1 }], output: { itemId: "raw_cocaine", yield: 3 } },
+    { lineId: "coke", step: "cut", inputs: [{ itemId: "raw_cocaine", qty: 1 }, { itemId: "baking_soda", qty: 2 }, { itemId: "acetone", qty: 1 }], output: { itemId: "loose_cocaine", yield: 3 } },
+    { lineId: "coke", step: "bag", inputs: [{ itemId: "loose_cocaine", qty: 3 }, { itemId: "weed_baggie", qty: 1 }], output: { itemId: "bag_of_coke", yield: 12 } },
   ];
   for (const r of recipes) await putRecipe(gid, r);
 }

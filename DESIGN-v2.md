@@ -216,7 +216,7 @@ can't be inferred from context the way v1's job did:
 
 `/setup` creates the **Operations** category with **#raw-house**, **#product-house**,
 **#money-house**, **#treasury**, and the read-only **#cutter-guide** (with the deck). It
-records each channel's house in `CHANNEL#`, sets the officer role, seeds the Honey line,
+records each channel's house in `CHANNEL#`, sets the officer role, seeds the Honey + Coke lines,
 and initializes cycle 1. Self-heals (recreates) any house channel that's been deleted.
 
 ## 9. Migration
