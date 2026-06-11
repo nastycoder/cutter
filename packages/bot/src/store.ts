@@ -155,9 +155,9 @@ export async function seedDefaults(gid: string): Promise<void> {
     // honey
     { id: "poppy_seed", name: "Poppy seed", kind: "base", value: 20, source: "farmed", lineId: "honey" },
     { id: "acetone", name: "Acetone", kind: "base", value: 30, source: "farmed", lineId: "honey" },
-    { id: "baking_soda", name: "Baking soda", kind: "base", value: 50, source: "bought", lineId: "honey" },
-    { id: "vial", name: "Vial", kind: "base", value: 50, source: "bought", lineId: "honey" },
-    { id: "syringe", name: "Syringe", kind: "base", value: 50, source: "bought", lineId: "honey" },
+    { id: "baking_soda", name: "Baking soda", kind: "base", value: 5, source: "bought", lineId: "honey" },
+    { id: "vial", name: "Vial", kind: "base", value: 15, source: "bought", lineId: "honey" },
+    { id: "syringe", name: "Syringe", kind: "base", value: 15, source: "bought", lineId: "honey" },
     { id: "cleaning_kit", name: "Cleaning kit", kind: "base", value: 50, source: "bought" },
     { id: "weak_heroin_powder", name: "Weak heroin powder", kind: "intermediate", value: 0, lineId: "honey" },
     { id: "cut_heroin", name: "Cut heroin", kind: "intermediate", value: 0, lineId: "honey" },
