@@ -416,7 +416,7 @@ async function setupWork(i: any): Promise<MsgData | string> {
       created.length ? `Created: ${created.join(" ")}` : "",
       `Cycle **${config.cycleNumber}** is live — log work as it happens, \`/payout\` settles it.`,
       "Seeded product lines **Honey** + **Coke** (catalog · recipes)",
-      "Default dials: labor $25/unit · 8% commission · 40% farm margin · ranks 5/4/3/2/1",
+      "Default dials: labor $25/unit · 8% commission · farmed flat $10 (auto-margin off) · ranks 5/4/3/2/1",
       guideLine,
       "",
       "Next: map ranks with `/rank map`, tune with `/config`.",
@@ -1303,7 +1303,7 @@ const DIALS: Dial[] = [
     val: (c) => `${Math.round((c.targetMargin ?? 0) * 100)} %`,
     fill: (c) => Math.round(Math.min(c.targetMargin ?? 0, 1) * 8),
     apply: (c, d) => { c.targetMargin = Math.min(0.95, Math.max(0, (c.targetMargin ?? 0) + d / 100)); },
-    reset: (c) => { c.targetMargin = 0.4; },
+    reset: (c) => { c.targetMargin = 0; },
   },
   ...[1, 2, 3, 4, 5].map(
     (lvl): Dial => ({

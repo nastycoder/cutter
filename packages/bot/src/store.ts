@@ -14,7 +14,7 @@ import * as db from "./db";
 export const DEFAULT_CONFIG: Config = {
   laborRate: 25,
   commissionPct: 0.08,
-  targetMargin: 0.4,
+  targetMargin: 0, // farm auto-pricing off — farmed resources at flat catalog value
   rankMultipliers: { 1: 5, 2: 4, 3: 3, 4: 2, 5: 1 },
 };
 
@@ -153,8 +153,8 @@ export async function seedDefaults(gid: string): Promise<void> {
 
   const items: CatalogItem[] = [
     // honey
-    { id: "poppy_seed", name: "Poppy seed", kind: "base", value: 20, source: "farmed", lineId: "honey" },
-    { id: "acetone", name: "Acetone", kind: "base", value: 30, source: "farmed", lineId: "honey" },
+    { id: "poppy_seed", name: "Poppy seed", kind: "base", value: 10, source: "farmed", lineId: "honey" },
+    { id: "acetone", name: "Acetone", kind: "base", value: 10, source: "farmed", lineId: "honey" },
     { id: "baking_soda", name: "Baking soda", kind: "base", value: 5, source: "bought", lineId: "honey" },
     { id: "vial", name: "Vial", kind: "base", value: 15, source: "bought", lineId: "honey" },
     { id: "syringe", name: "Syringe", kind: "base", value: 15, source: "bought", lineId: "honey" },
@@ -164,8 +164,8 @@ export async function seedDefaults(gid: string): Promise<void> {
     { id: "vial_heroin", name: "Vial heroin", kind: "intermediate", value: 0, lineId: "honey" },
     { id: "honey", name: "Honey", kind: "final", value: 0, lineId: "honey" },
     // coke (cut also consumes honey's baking soda + acetone cross-line)
-    { id: "coca_leaves", name: "Coca leaves", kind: "base", value: 20, source: "farmed", lineId: "coke" },
-    { id: "illegal_gas", name: "Illegal Gas", kind: "base", value: 50, source: "farmed", lineId: "coke" },
+    { id: "coca_leaves", name: "Coca leaves", kind: "base", value: 10, source: "farmed", lineId: "coke" },
+    { id: "illegal_gas", name: "Illegal Gas", kind: "base", value: 10, source: "farmed", lineId: "coke" },
     { id: "weed_baggie", name: "Weed baggie", kind: "base", value: 20, source: "bought", lineId: "coke" },
     { id: "raw_cocaine", name: "Raw cocaine", kind: "intermediate", value: 0, lineId: "coke" },
     { id: "loose_cocaine", name: "Loose cocaine", kind: "intermediate", value: 0, lineId: "coke" },
